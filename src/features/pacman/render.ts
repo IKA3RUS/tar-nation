@@ -1,4 +1,6 @@
-import type { Direction, GameState, Pac } from "./game";
+import { VEC, type Direction } from "./dir";
+import type { GameState, Pac } from "./game";
+import type { Ghost } from "./ghosts";
 import { MAZE, MAZE_COLS, MAZE_ROWS, pelletKey, TILE } from "./maze";
 
 /** Placeholder palette — will be replaced later. */
@@ -70,6 +72,53 @@ function drawPacman(ctx: CanvasRenderingContext2D, pac: Pac) {
   ctx.fill();
 }
 
+function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost) {
+  const cx = g.x * TILE + TILE / 2;
+  const cy = g.y * TILE + TILE / 2;
+  const r = TILE * 0.45;
+
+  ctx.fillStyle = g.color;
+  ctx.beginPath();
+  ctx.arc(cx, cy - r * 0.15, r, Math.PI, 0);
+  ctx.lineTo(cx + r, cy + r * 0.6);
+  const feet = 3;
+  for (let i = 0; i < feet; i++) {
+    const xMid = cx + r - (2 * r * (i + 0.5)) / feet;
+    const xEnd = cx + r - (2 * r * (i + 1)) / feet;
+    ctx.quadraticCurveTo(xMid, cy + r * 1.05, xEnd, cy + r * 0.6);
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  const eyeDx = TILE * 0.16;
+  const eyeDy = -r * 0.1;
+  const look = VEC[g.dir];
+  for (const side of [-1, 1]) {
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.ellipse(
+      cx + side * eyeDx,
+      cy + eyeDy,
+      r * 0.26,
+      r * 0.32,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+    ctx.fillStyle = "#0d1b8f";
+    ctx.beginPath();
+    ctx.arc(
+      cx + side * eyeDx + look.x * r * 0.12,
+      cy + eyeDy + look.y * r * 0.14,
+      r * 0.14,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+}
+
 function drawHeader(ctx: CanvasRenderingContext2D, game: GameState) {
   ctx.fillStyle = COLORS.text;
   ctx.font = `${TILE}px monospace`;
@@ -83,6 +132,8 @@ function drawHeader(ctx: CanvasRenderingContext2D, game: GameState) {
     ctx.fillText("ARROW KEYS / WASD TO MOVE", CANVAS_W / 2, HEADER / 2);
   } else if (game.status === "won") {
     ctx.fillText("YOU WIN!  PRESS R", CANVAS_W / 2, HEADER / 2);
+  } else if (game.status === "lost") {
+    ctx.fillText("GAME OVER  PRESS R", CANVAS_W / 2, HEADER / 2);
   }
 }
 
@@ -97,5 +148,6 @@ export function drawFrame(ctx: CanvasRenderingContext2D, game: GameState) {
   ctx.translate(0, HEADER);
   drawMaze(ctx, game.pellets);
   drawPacman(ctx, game.pac);
+  for (const ghost of game.ghosts) drawGhost(ctx, ghost);
   ctx.restore();
 }

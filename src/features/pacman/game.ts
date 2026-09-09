@@ -1,3 +1,5 @@
+import { OPPOSITE, VEC, distToNextCenter, type Direction } from "./dir";
+import { CATCH_DIST, createGhosts, updateGhosts, type Ghost } from "./ghosts";
 import {
   initialPellets,
   MAZE_COLS,
@@ -6,9 +8,10 @@ import {
   tileAt,
 } from "./maze";
 
-export type Direction = "up" | "down" | "left" | "right";
+export type { Direction } from "./dir";
 
-export type GameStatus = "ready" | "playing" | "won";
+export type GameStatus = "ready" | "playing" | "won" | "lost";
+export type GameMode = "scatter" | "chase";
 
 /** Pac-Man speed in tiles per second. */
 const PAC_SPEED = 7.5;
@@ -17,22 +20,12 @@ const PAC_SPEED = 7.5;
 const PELLET_POINTS = 10;
 const POWER_POINTS = 50;
 
+/** Length of each scatter / chase phase, in seconds. */
+const SCATTER_SECS = 7;
+const CHASE_SECS = 20;
+
 /** Positions closer than this (in tiles) count as tile-aligned. */
 const EPS = 1e-6;
-
-const VEC: Record<Direction, { x: -1 | 0 | 1; y: -1 | 0 | 1 }> = {
-  up: { x: 0, y: -1 },
-  down: { x: 0, y: 1 },
-  left: { x: -1, y: 0 },
-  right: { x: 1, y: 0 },
-};
-
-const OPPOSITE: Record<Direction, Direction> = {
-  up: "down",
-  down: "up",
-  left: "right",
-  right: "left",
-};
 
 export type Pac = {
   /** Position in tile units; an integer value means centered on that tile. */
@@ -49,12 +42,18 @@ export type Pac = {
 };
 
 export type GameState = {
-  /** `ready` until the first key press, `won` once every pellet is eaten. */
+  /** `ready` until the first key press; `won` / `lost` end the round. */
   status: GameStatus;
   score: number;
   /** Keys (see `pelletKey`) of pellets not yet eaten. */
   pellets: Set<number>;
   pac: Pac;
+  ghosts: Ghost[];
+  /** Seconds since play started. */
+  elapsed: number;
+  mode: GameMode;
+  /** Seconds left in the current scatter / chase phase. */
+  modeLeft: number;
 };
 
 function spawnPac(): Pac {
@@ -74,6 +73,10 @@ export function createGame(): GameState {
     score: 0,
     pellets: initialPellets(),
     pac: spawnPac(),
+    ghosts: createGhosts(),
+    elapsed: 0,
+    mode: "scatter",
+    modeLeft: SCATTER_SECS,
   };
 }
 
@@ -83,20 +86,16 @@ export function resetGame(state: GameState): void {
   state.score = 0;
   state.pellets = initialPellets();
   state.pac = spawnPac();
+  state.ghosts = createGhosts();
+  state.elapsed = 0;
+  state.mode = "scatter";
+  state.modeLeft = SCATTER_SECS;
 }
 
 /** Whether a tile can be walked onto (walls and the ghost door cannot). */
 function canEnter(col: number, row: number): boolean {
   const tile = tileAt(col, row);
   return tile !== "wall" && tile !== "door";
-}
-
-/**
- * Distance from `pos` to the next tile center when moving along `dir` (a
- * nonzero step).
- */
-function distToNextCenter(pos: number, dir: number): number {
-  return dir > 0 ? Math.floor(pos + 1) - pos : pos - Math.ceil(pos - 1);
 }
 
 /** Eat the pellet on the tile Pac-Man just reached, if any. */
@@ -109,20 +108,14 @@ function eatPellet(state: GameState, col: number, row: number): void {
   if (state.pellets.size === 0) state.status = "won";
 }
 
-/** Advance the game by `dt` seconds. */
-export function step(state: GameState, dt: number): void {
-  if (state.status !== "playing") return;
-
+/** Advance Pac-Man by up to `budget` tiles along his current heading. */
+function movePac(state: GameState, budget: number): void {
   const pac = state.pac;
-  let budget = PAC_SPEED * dt;
-
-  // Turning back the way you came is always allowed, even mid-tile.
-  if (pac.want === OPPOSITE[pac.dir]) pac.dir = pac.want;
-
+  let left = budget;
   let moved = false;
   let guard = 0;
 
-  while (budget > EPS && guard++ < 64) {
+  while (left > EPS && guard++ < 64) {
     const onCenter =
       Math.abs(pac.x - Math.round(pac.x)) < EPS &&
       Math.abs(pac.y - Math.round(pac.y)) < EPS;
@@ -157,11 +150,11 @@ export function step(state: GameState, dt: number): void {
     const v = VEC[pac.dir];
     const d =
       v.x !== 0 ? distToNextCenter(pac.x, v.x) : distToNextCenter(pac.y, v.y);
-    const move = Math.min(d, budget);
+    const move = Math.min(d, left);
 
     pac.x += v.x * move;
     pac.y += v.y * move;
-    budget -= move;
+    left -= move;
     moved ||= move > EPS;
 
     // Wrap through the side tunnel.
@@ -169,5 +162,49 @@ export function step(state: GameState, dt: number): void {
     else if (pac.x >= MAZE_COLS - 0.5) pac.x -= MAZE_COLS;
   }
 
-  if (moved) pac.anim += dt;
+  if (moved) pac.anim += budget / PAC_SPEED;
+}
+
+/** Advance the game by `dt` seconds. */
+export function step(state: GameState, dt: number): void {
+  if (state.status !== "playing") return;
+
+  state.elapsed += dt;
+
+  // Scatter / chase phase timer.
+  state.modeLeft -= dt;
+  let modeChanged = false;
+  if (state.modeLeft <= 0) {
+    state.mode = state.mode === "scatter" ? "chase" : "scatter";
+    state.modeLeft += state.mode === "scatter" ? SCATTER_SECS : CHASE_SECS;
+    modeChanged = true;
+  }
+
+  // Turning back the way you came is always allowed, even mid-tile.
+  const pac = state.pac;
+  if (pac.want === OPPOSITE[pac.dir]) pac.dir = pac.want;
+
+  movePac(state, PAC_SPEED * dt);
+  if (state.pellets.size === 0) return;
+
+  updateGhosts(
+    state.ghosts,
+    {
+      pac: { x: pac.x, y: pac.y, dir: pac.dir },
+      blinky: { x: state.ghosts[0].x, y: state.ghosts[0].y },
+      mode: state.mode,
+      modeChanged,
+      elapsed: state.elapsed,
+    },
+    dt,
+  );
+
+  for (const ghost of state.ghosts) {
+    if (ghost.phase !== "out") continue;
+    if (Math.hypot(ghost.x - pac.x, ghost.y - pac.y) < CATCH_DIST) {
+      state.status = "lost";
+      pac.moving = false;
+      break;
+    }
+  }
 }
