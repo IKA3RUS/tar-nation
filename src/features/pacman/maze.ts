@@ -90,3 +90,20 @@ export function tileAt(col: number, row: number): Tile {
 export function isWall(col: number, row: number): boolean {
   return tileAt(col, row) === "wall";
 }
+
+/** Stable numeric id for a tile, used to track which pellets are left. */
+export function pelletKey(col: number, row: number): number {
+  return row * MAZE_COLS + col;
+}
+
+/** Keys of every pellet and power pellet in the fresh maze. */
+export function initialPellets(): Set<number> {
+  const keys = new Set<number>();
+  for (let row = 0; row < MAZE_ROWS; row++) {
+    for (let col = 0; col < MAZE_COLS; col++) {
+      const tile = MAZE[row][col];
+      if (tile === "pellet" || tile === "power") keys.add(pelletKey(col, row));
+    }
+  }
+  return keys;
+}

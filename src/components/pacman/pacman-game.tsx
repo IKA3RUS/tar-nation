@@ -1,8 +1,12 @@
 import { useEffect, useRef } from "react";
 
-import { createGame, step, type Direction } from "#/features/pacman/game";
-import { MAZE_COLS, MAZE_ROWS, TILE } from "#/features/pacman/maze";
-import { drawFrame } from "#/features/pacman/render";
+import {
+  createGame,
+  resetGame,
+  step,
+  type Direction,
+} from "#/features/pacman/game";
+import { CANVAS_H, CANVAS_W, drawFrame } from "#/features/pacman/render";
 
 const KEY_TO_DIR: Record<string, Direction> = {
   ArrowUp: "up",
@@ -45,12 +49,21 @@ export function PacmanGame() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const game = gameRef.current;
+
+      if (game.status === "won") {
+        if (e.key === "r" || e.key === "R") {
+          e.preventDefault();
+          resetGame(game);
+        }
+        return;
+      }
+
       const dir = KEY_TO_DIR[e.key];
       if (!dir) return;
       e.preventDefault();
-      const game = gameRef.current;
       game.pac.want = dir;
-      game.started = true;
+      if (game.status === "ready") game.status = "playing";
     };
 
     window.addEventListener("keydown", onKey);
@@ -60,8 +73,8 @@ export function PacmanGame() {
   return (
     <canvas
       ref={canvasRef}
-      width={MAZE_COLS * TILE}
-      height={MAZE_ROWS * TILE}
+      width={CANVAS_W}
+      height={CANVAS_H}
       className="block"
     />
   );

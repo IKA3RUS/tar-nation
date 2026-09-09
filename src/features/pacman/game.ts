@@ -1,9 +1,21 @@
-import { MAZE_COLS, PAC_SPAWN, tileAt } from "./maze";
+import {
+  initialPellets,
+  MAZE_COLS,
+  PAC_SPAWN,
+  pelletKey,
+  tileAt,
+} from "./maze";
 
 export type Direction = "up" | "down" | "left" | "right";
 
+export type GameStatus = "ready" | "playing" | "won";
+
 /** Pac-Man speed in tiles per second. */
 const PAC_SPEED = 7.5;
+
+/** Points awarded per item eaten. */
+const PELLET_POINTS = 10;
+const POWER_POINTS = 50;
 
 /** Positions closer than this (in tiles) count as tile-aligned. */
 const EPS = 1e-6;
@@ -37,23 +49,40 @@ export type Pac = {
 };
 
 export type GameState = {
-  /** Movement is frozen until the first key press. */
-  started: boolean;
+  /** `ready` until the first key press, `won` once every pellet is eaten. */
+  status: GameStatus;
+  score: number;
+  /** Keys (see `pelletKey`) of pellets not yet eaten. */
+  pellets: Set<number>;
   pac: Pac;
 };
 
+function spawnPac(): Pac {
+  return {
+    x: PAC_SPAWN.col,
+    y: PAC_SPAWN.row,
+    dir: "left",
+    want: "left",
+    moving: false,
+    anim: 0,
+  };
+}
+
 export function createGame(): GameState {
   return {
-    started: false,
-    pac: {
-      x: PAC_SPAWN.col,
-      y: PAC_SPAWN.row,
-      dir: "left",
-      want: "left",
-      moving: false,
-      anim: 0,
-    },
+    status: "ready",
+    score: 0,
+    pellets: initialPellets(),
+    pac: spawnPac(),
   };
+}
+
+/** Reset an existing state in place (keeps references held by the game loop). */
+export function resetGame(state: GameState): void {
+  state.status = "ready";
+  state.score = 0;
+  state.pellets = initialPellets();
+  state.pac = spawnPac();
 }
 
 /** Whether a tile can be walked onto (walls and the ghost door cannot). */
@@ -70,9 +99,19 @@ function distToNextCenter(pos: number, dir: number): number {
   return dir > 0 ? Math.floor(pos + 1) - pos : pos - Math.ceil(pos - 1);
 }
 
+/** Eat the pellet on the tile Pac-Man just reached, if any. */
+function eatPellet(state: GameState, col: number, row: number): void {
+  const key = pelletKey(col, row);
+  if (!state.pellets.has(key)) return;
+
+  state.pellets.delete(key);
+  state.score += tileAt(col, row) === "power" ? POWER_POINTS : PELLET_POINTS;
+  if (state.pellets.size === 0) state.status = "won";
+}
+
 /** Advance the game by `dt` seconds. */
 export function step(state: GameState, dt: number): void {
-  if (!state.started) return;
+  if (state.status !== "playing") return;
 
   const pac = state.pac;
   let budget = PAC_SPEED * dt;
@@ -93,6 +132,12 @@ export function step(state: GameState, dt: number): void {
       pac.y = Math.round(pac.y);
       const col = pac.x;
       const row = pac.y;
+
+      eatPellet(state, col, row);
+      if (state.pellets.size === 0) {
+        pac.moving = false;
+        break;
+      }
 
       // Take the queued turn if the way is clear.
       if (pac.want !== pac.dir) {
