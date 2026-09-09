@@ -191,10 +191,6 @@ function drawHeader(ctx: CanvasRenderingContext2D, game: GameState) {
   ctx.textAlign = "left";
   ctx.fillText(`SCORE ${game.score}`, TILE / 2, midY);
 
-  ctx.textAlign = "center";
-  ctx.fillStyle = COLORS.hint;
-  ctx.fillText(`HI ${game.hiScore}`, CANVAS_W / 2, midY);
-
   drawLifeIcons(ctx, game.lives);
 }
 
@@ -252,9 +248,6 @@ function drawOverlay(ctx: CanvasRenderingContext2D, game: GameState) {
       gap: TILE,
     },
     { text: `SCORE ${game.score}`, size: TILE * 0.95, color: COLORS.text },
-    ...(game.score >= game.hiScore && game.score > 0
-      ? [{ text: "NEW HI-SCORE!", size: TILE * 0.8, color: COLORS.pacman }]
-      : []),
     {
       text: "PRESS R TO RESTART",
       size: TILE * 0.8,
