@@ -11,9 +11,9 @@ export type GhostName = "blinky" | "pinky" | "inky" | "clyde";
 
 /**
  * `house`: waiting inside. `exiting`: gliding out the door. `out`:
- * free-roaming.
+ * free-roaming. `eaten`: eyes returning to the house after being eaten.
  */
-export type GhostPhase = "house" | "exiting" | "out";
+export type GhostPhase = "house" | "exiting" | "out" | "eaten";
 
 export type Ghost = {
   name: GhostName;
@@ -26,16 +26,22 @@ export type Ghost = {
   releaseAt: number;
   /** Scatter-mode home corner, in tile coords (usually just off the board). */
   corner: { x: number; y: number };
+  /** House slot this ghost spawns in and returns to when eaten. */
+  spawn: { x: number; y: number };
 };
 
-/** Ghosts move a touch slower than Pac-Man. */
+/** Normal roaming speed, in tiles per second. */
 const GHOST_SPEED = 6.75;
+/** Slower shuffle while frightened. */
+const FRIGHT_SPEED = 4.5;
+/** Eyes rush home quickly. */
+const EATEN_SPEED = 14;
 const EPS = 1e-6;
 
 /** How close (in tiles) counts as catching Pac-Man. */
 export const CATCH_DIST = 0.5;
 
-type GhostDef = Omit<Ghost, "x" | "y" | "dir" | "phase">;
+type GhostDef = Omit<Ghost, "x" | "y" | "dir" | "phase" | "spawn">;
 
 const DEFS: readonly GhostDef[] = [
   {
@@ -64,6 +70,7 @@ export function createGhosts(): Ghost[] {
     ...def,
     x: GHOST_SPAWNS[i].col,
     y: GHOST_SPAWNS[i].row,
+    spawn: { x: GHOST_SPAWNS[i].col, y: GHOST_SPAWNS[i].row },
     dir: "up" as Direction,
     phase:
       def.releaseAt === 0 ? ("exiting" as GhostPhase) : ("house" as GhostPhase),
@@ -77,6 +84,8 @@ export type GhostCtx = {
   mode: "scatter" | "chase";
   /** True on the frame the scatter/chase phase flips. */
   modeChanged: boolean;
+  /** True while a power pellet is active. */
+  frightened: boolean;
   /** Seconds since play started. */
   elapsed: number;
 };
@@ -86,20 +95,38 @@ export function updateGhosts(ghosts: Ghost[], ctx: GhostCtx, dt: number): void {
 }
 
 function updateGhost(g: Ghost, ctx: GhostCtx, dt: number): void {
+  if (g.phase === "eaten") {
+    if (glideTowards(g, g.spawn.x, g.spawn.y, EATEN_SPEED * dt)) {
+      g.phase = "exiting";
+    }
+    return;
+  }
+
   if (g.phase === "house") {
     if (ctx.elapsed < g.releaseAt) return;
     g.phase = "exiting";
   }
 
   if (g.phase === "exiting") {
-    glideOut(g, GHOST_SPEED * dt);
+    if (
+      glideTowards(
+        g,
+        GHOST_DOOR_EXIT.col,
+        GHOST_DOOR_EXIT.row,
+        GHOST_SPEED * dt,
+      )
+    ) {
+      g.phase = "out";
+      g.dir = "left";
+    }
     return;
   }
 
   // phase === "out"
-  if (ctx.modeChanged) g.dir = OPPOSITE[g.dir];
+  if (ctx.modeChanged && !ctx.frightened) g.dir = OPPOSITE[g.dir];
 
-  let budget = GHOST_SPEED * dt;
+  const speed = ctx.frightened ? FRIGHT_SPEED : GHOST_SPEED;
+  let budget = speed * dt;
   let guard = 0;
 
   while (budget > EPS && guard++ < 64) {
@@ -110,7 +137,7 @@ function updateGhost(g: Ghost, ctx: GhostCtx, dt: number): void {
     if (onCenter) {
       g.x = Math.round(g.x);
       g.y = Math.round(g.y);
-      g.dir = chooseDir(g, ctx);
+      g.dir = ctx.frightened ? wanderDir(g) : chooseDir(g, ctx);
     }
 
     const v = VEC[g.dir];
@@ -127,28 +154,28 @@ function updateGhost(g: Ghost, ctx: GhostCtx, dt: number): void {
   }
 }
 
-/** Move a ghost from its house slot to the tile just outside the door. */
-function glideOut(g: Ghost, dist: number): void {
-  const tx = GHOST_DOOR_EXIT.col;
-  const ty = GHOST_DOOR_EXIT.row;
-
+/**
+ * Slide straight toward `(tx, ty)` ignoring walls (used for the house door and
+ * for eyes going home). Returns true once it arrives.
+ */
+function glideTowards(g: Ghost, tx: number, ty: number, dist: number): boolean {
   if (Math.abs(g.x - tx) > EPS) {
     g.dir = g.x < tx ? "right" : "left";
     const s = Math.min(dist, Math.abs(g.x - tx));
     g.x += g.x < tx ? s : -s;
-    return;
+    return false;
   }
 
   g.x = tx;
   if (Math.abs(g.y - ty) > EPS) {
-    g.dir = "up";
-    g.y -= Math.min(dist, Math.abs(g.y - ty));
-    return;
+    g.dir = g.y < ty ? "down" : "up";
+    const s = Math.min(dist, Math.abs(g.y - ty));
+    g.y += g.y < ty ? s : -s;
+    return false;
   }
 
   g.y = ty;
-  g.phase = "out";
-  g.dir = "left";
+  return true;
 }
 
 /** Walls and the (closed) house door block a roaming ghost. */
@@ -180,35 +207,43 @@ function targetTile(g: Ghost, ctx: GhostCtx): { x: number; y: number } {
   }
 }
 
-/** Pick the non-reversing exit that gets closest to the ghost's target. */
+/** Non-reversing exits available from the ghost's current tile. */
+function exits(g: Ghost): Direction[] {
+  const col = Math.round(g.x);
+  const row = Math.round(g.y);
+  const back = OPPOSITE[g.dir];
+  const open = DIRS.filter((d) => {
+    if (d === back) return false;
+    const v = VEC[d];
+    return ghostCanEnter(col + v.x, row + v.y);
+  });
+  if (open.length > 0) return open;
+  return ghostCanEnter(col + VEC[back].x, row + VEC[back].y) ? [back] : [g.dir];
+}
+
+/** Pick the exit that gets closest to the ghost's target. */
 function chooseDir(g: Ghost, ctx: GhostCtx): Direction {
   const col = Math.round(g.x);
   const row = Math.round(g.y);
   const target = targetTile(g, ctx);
-  const back = OPPOSITE[g.dir];
 
   let best = g.dir;
   let bestDist = Infinity;
-  let found = false;
-
-  for (const d of DIRS) {
-    if (d === back) continue;
+  for (const d of exits(g)) {
     const v = VEC[d];
-    if (!ghostCanEnter(col + v.x, row + v.y)) continue;
-
     const dx = col + v.x - target.x;
     const dy = row + v.y - target.y;
     const dist = dx * dx + dy * dy;
     if (dist < bestDist) {
       bestDist = dist;
       best = d;
-      found = true;
     }
   }
+  return best;
+}
 
-  if (found) return best;
-
-  // Dead end — turning back is the only way out.
-  const bv = VEC[back];
-  return ghostCanEnter(col + bv.x, row + bv.y) ? back : g.dir;
+/** Frightened ghosts pick a random available exit. */
+function wanderDir(g: Ghost): Direction {
+  const open = exits(g);
+  return open[Math.floor(Math.random() * open.length)];
 }

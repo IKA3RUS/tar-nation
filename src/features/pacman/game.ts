@@ -24,6 +24,16 @@ const POWER_POINTS = 50;
 const SCATTER_SECS = 7;
 const CHASE_SECS = 20;
 
+/** How long ghosts stay frightened after a power pellet, in seconds. */
+const FRIGHT_SECS = 6;
+/** Score for each ghost eaten during one power pellet. */
+const GHOST_SCORES = [200, 400, 800, 1600];
+
+/** Lives the player starts with. */
+const START_LIVES = 3;
+/** Freeze after losing a life, in seconds. */
+const RESPAWN_PAUSE = 1;
+
 /** Positions closer than this (in tiles) count as tile-aligned. */
 const EPS = 1e-6;
 
@@ -45,6 +55,7 @@ export type GameState = {
   /** `ready` until the first key press; `won` / `lost` end the round. */
   status: GameStatus;
   score: number;
+  lives: number;
   /** Keys (see `pelletKey`) of pellets not yet eaten. */
   pellets: Set<number>;
   pac: Pac;
@@ -54,6 +65,12 @@ export type GameState = {
   mode: GameMode;
   /** Seconds left in the current scatter / chase phase. */
   modeLeft: number;
+  /** Seconds left of frightened ghosts; 0 when inactive. */
+  frightenedLeft: number;
+  /** How many ghosts eaten so far in the current power pellet. */
+  ghostChain: number;
+  /** Seconds left of the post-death freeze. */
+  pauseLeft: number;
 };
 
 function spawnPac(): Pac {
@@ -71,12 +88,16 @@ export function createGame(): GameState {
   return {
     status: "ready",
     score: 0,
+    lives: START_LIVES,
     pellets: initialPellets(),
     pac: spawnPac(),
     ghosts: createGhosts(),
     elapsed: 0,
     mode: "scatter",
     modeLeft: SCATTER_SECS,
+    frightenedLeft: 0,
+    ghostChain: 0,
+    pauseLeft: 0,
   };
 }
 
@@ -84,12 +105,21 @@ export function createGame(): GameState {
 export function resetGame(state: GameState): void {
   state.status = "ready";
   state.score = 0;
+  state.lives = START_LIVES;
   state.pellets = initialPellets();
+  state.ghostChain = 0;
+  state.pauseLeft = 0;
+  resetActors(state);
+}
+
+/** Send Pac-Man and the ghosts back to their start positions. */
+function resetActors(state: GameState): void {
   state.pac = spawnPac();
   state.ghosts = createGhosts();
   state.elapsed = 0;
   state.mode = "scatter";
   state.modeLeft = SCATTER_SECS;
+  state.frightenedLeft = 0;
 }
 
 /** Whether a tile can be walked onto (walls and the ghost door cannot). */
@@ -104,7 +134,17 @@ function eatPellet(state: GameState, col: number, row: number): void {
   if (!state.pellets.has(key)) return;
 
   state.pellets.delete(key);
-  state.score += tileAt(col, row) === "power" ? POWER_POINTS : PELLET_POINTS;
+  const isPower = tileAt(col, row) === "power";
+  state.score += isPower ? POWER_POINTS : PELLET_POINTS;
+
+  if (isPower) {
+    state.frightenedLeft = FRIGHT_SECS;
+    state.ghostChain = 0;
+    for (const ghost of state.ghosts) {
+      if (ghost.phase === "out") ghost.dir = OPPOSITE[ghost.dir];
+    }
+  }
+
   if (state.pellets.size === 0) state.status = "won";
 }
 
@@ -165,19 +205,58 @@ function movePac(state: GameState, budget: number): void {
   if (moved) pac.anim += budget / PAC_SPEED;
 }
 
+/** Handle a ghost touching Pac-Man: eat it while frightened, otherwise die. */
+function resolveCollisions(state: GameState): void {
+  const pac = state.pac;
+  for (const ghost of state.ghosts) {
+    if (ghost.phase !== "out") continue;
+    if (Math.hypot(ghost.x - pac.x, ghost.y - pac.y) >= CATCH_DIST) continue;
+
+    if (state.frightenedLeft > 0) {
+      state.score += GHOST_SCORES[state.ghostChain];
+      state.ghostChain = Math.min(
+        state.ghostChain + 1,
+        GHOST_SCORES.length - 1,
+      );
+      ghost.phase = "eaten";
+      continue;
+    }
+
+    state.lives -= 1;
+    if (state.lives <= 0) {
+      state.status = "lost";
+      pac.moving = false;
+    } else {
+      resetActors(state);
+      state.pauseLeft = RESPAWN_PAUSE;
+    }
+    return;
+  }
+}
+
 /** Advance the game by `dt` seconds. */
 export function step(state: GameState, dt: number): void {
   if (state.status !== "playing") return;
 
-  state.elapsed += dt;
+  if (state.pauseLeft > 0) {
+    state.pauseLeft = Math.max(0, state.pauseLeft - dt);
+    return;
+  }
 
-  // Scatter / chase phase timer.
-  state.modeLeft -= dt;
+  state.elapsed += dt;
+  if (state.frightenedLeft > 0) {
+    state.frightenedLeft = Math.max(0, state.frightenedLeft - dt);
+  }
+
+  // Scatter / chase phase timer (paused while ghosts are frightened).
   let modeChanged = false;
-  if (state.modeLeft <= 0) {
-    state.mode = state.mode === "scatter" ? "chase" : "scatter";
-    state.modeLeft += state.mode === "scatter" ? SCATTER_SECS : CHASE_SECS;
-    modeChanged = true;
+  if (state.frightenedLeft === 0) {
+    state.modeLeft -= dt;
+    if (state.modeLeft <= 0) {
+      state.mode = state.mode === "scatter" ? "chase" : "scatter";
+      state.modeLeft += state.mode === "scatter" ? SCATTER_SECS : CHASE_SECS;
+      modeChanged = true;
+    }
   }
 
   // Turning back the way you came is always allowed, even mid-tile.
@@ -194,17 +273,11 @@ export function step(state: GameState, dt: number): void {
       blinky: { x: state.ghosts[0].x, y: state.ghosts[0].y },
       mode: state.mode,
       modeChanged,
+      frightened: state.frightenedLeft > 0,
       elapsed: state.elapsed,
     },
     dt,
   );
 
-  for (const ghost of state.ghosts) {
-    if (ghost.phase !== "out") continue;
-    if (Math.hypot(ghost.x - pac.x, ghost.y - pac.y) < CATCH_DIST) {
-      state.status = "lost";
-      pac.moving = false;
-      break;
-    }
-  }
+  resolveCollisions(state);
 }
