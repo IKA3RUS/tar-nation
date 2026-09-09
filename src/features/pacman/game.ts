@@ -55,6 +55,8 @@ export type GameState = {
   /** `ready` until the first key press; `won` / `lost` end the round. */
   status: GameStatus;
   score: number;
+  /** Best score so far; the component seeds and persists this. */
+  hiScore: number;
   lives: number;
   /** Keys (see `pelletKey`) of pellets not yet eaten. */
   pellets: Set<number>;
@@ -88,6 +90,7 @@ export function createGame(): GameState {
   return {
     status: "ready",
     score: 0,
+    hiScore: 0,
     lives: START_LIVES,
     pellets: initialPellets(),
     pac: spawnPac(),
@@ -264,6 +267,7 @@ export function step(state: GameState, dt: number): void {
   if (pac.want === OPPOSITE[pac.dir]) pac.dir = pac.want;
 
   movePac(state, PAC_SPEED * dt);
+  if (state.score > state.hiScore) state.hiScore = state.score;
   if (state.pellets.size === 0) return;
 
   updateGhosts(
@@ -280,4 +284,5 @@ export function step(state: GameState, dt: number): void {
   );
 
   resolveCollisions(state);
+  if (state.score > state.hiScore) state.hiScore = state.score;
 }

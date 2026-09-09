@@ -13,6 +13,7 @@ const COLORS = {
   pacman: "#ffff00",
   text: "#ffffff",
   hint: "#8b8bff",
+  danger: "#ff5151",
   frightened: "#2121ff",
   frightenedFlash: "#f0f0f0",
   eyeWhite: "#ffffff",
@@ -165,6 +166,22 @@ function drawGhost(
   drawGhostEyes(ctx, g, cx, cy, r);
 }
 
+function drawLifeIcons(ctx: CanvasRenderingContext2D, lives: number) {
+  const r = TILE * 0.36;
+  const facing = Math.PI;
+  const half = Math.PI / 5;
+  ctx.fillStyle = COLORS.pacman;
+  for (let i = 0; i < Math.max(0, lives); i++) {
+    const cx = CANVAS_W - TILE * 0.9 - i * TILE;
+    const cy = HEADER / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, facing + half, facing - half + Math.PI * 2);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
 function drawHeader(ctx: CanvasRenderingContext2D, game: GameState) {
   const midY = HEADER / 2;
 
@@ -174,21 +191,77 @@ function drawHeader(ctx: CanvasRenderingContext2D, game: GameState) {
   ctx.textAlign = "left";
   ctx.fillText(`SCORE ${game.score}`, TILE / 2, midY);
 
-  ctx.textAlign = "right";
-  ctx.fillText(`LIVES ${Math.max(0, game.lives)}`, CANVAS_W - TILE / 2, midY);
+  ctx.textAlign = "center";
+  ctx.fillStyle = COLORS.hint;
+  ctx.fillText(`HI ${game.hiScore}`, CANVAS_W / 2, midY);
+
+  drawLifeIcons(ctx, game.lives);
+}
+
+function drawCenteredLines(
+  ctx: CanvasRenderingContext2D,
+  lines: { text: string; size: number; color: string; gap?: number }[],
+) {
+  const cx = CANVAS_W / 2;
+  let y = HEADER + (CANVAS_H - HEADER) / 2;
+  const total = lines.reduce(
+    (sum, l) => sum + l.size + (l.gap ?? l.size * 0.6),
+    0,
+  );
+  y -= total / 2;
 
   ctx.textAlign = "center";
-  if (game.status === "ready") {
-    ctx.fillStyle = COLORS.hint;
-    ctx.fillText("ARROW KEYS / WASD TO MOVE", CANVAS_W / 2, midY);
-  } else if (game.status === "won") {
-    ctx.fillText("YOU WIN!  PRESS R", CANVAS_W / 2, midY);
-  } else if (game.status === "lost") {
-    ctx.fillText("GAME OVER  PRESS R", CANVAS_W / 2, midY);
-  } else if (game.pauseLeft > 0) {
-    ctx.fillStyle = COLORS.pacman;
-    ctx.fillText("READY!", CANVAS_W / 2, midY);
+  ctx.textBaseline = "top";
+  for (const line of lines) {
+    ctx.fillStyle = line.color;
+    ctx.font = `${line.size}px monospace`;
+    ctx.fillText(line.text, cx, y);
+    y += line.size + (line.gap ?? line.size * 0.6);
   }
+}
+
+/** Start screen, win / game-over screens, and the mid-round READY! flash. */
+function drawOverlay(ctx: CanvasRenderingContext2D, game: GameState) {
+  if (game.status === "playing") {
+    if (game.pauseLeft > 0) {
+      drawCenteredLines(ctx, [
+        { text: "READY!", size: TILE * 1.3, color: COLORS.pacman },
+      ]);
+    }
+    return;
+  }
+
+  ctx.fillStyle = "rgba(0, 0, 0, 0.72)";
+  ctx.fillRect(0, HEADER, CANVAS_W, CANVAS_H - HEADER);
+
+  if (game.status === "ready") {
+    drawCenteredLines(ctx, [
+      { text: "PAC-MAN", size: TILE * 2.2, color: COLORS.pacman, gap: TILE },
+      { text: "PRESS AN ARROW KEY", size: TILE * 0.85, color: COLORS.text },
+      { text: "ARROWS / WASD TO MOVE", size: TILE * 0.7, color: COLORS.hint },
+    ]);
+    return;
+  }
+
+  const won = game.status === "won";
+  drawCenteredLines(ctx, [
+    {
+      text: won ? "CLEARED!" : "GAME OVER",
+      size: TILE * 1.7,
+      color: won ? COLORS.pacman : COLORS.danger,
+      gap: TILE,
+    },
+    { text: `SCORE ${game.score}`, size: TILE * 0.95, color: COLORS.text },
+    ...(game.score >= game.hiScore && game.score > 0
+      ? [{ text: "NEW HI-SCORE!", size: TILE * 0.8, color: COLORS.pacman }]
+      : []),
+    {
+      text: "PRESS R TO RESTART",
+      size: TILE * 0.8,
+      color: COLORS.hint,
+      gap: TILE,
+    },
+  ]);
 }
 
 /** Clear the canvas and draw the current game state. */
@@ -212,4 +285,6 @@ export function drawFrame(ctx: CanvasRenderingContext2D, game: GameState) {
     drawGhost(ctx, ghost, frightened, flashing);
   }
   ctx.restore();
+
+  drawOverlay(ctx, game);
 }
