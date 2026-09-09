@@ -34,28 +34,36 @@ const DIR_ANGLE: Record<Direction, number> = {
 };
 
 /**
- * Optional sprite for the power pellet, served from `public/img/pacman/`.
- * Loaded lazily (never during SSR) and drawn only once it has decoded; until
- * then `drawMaze` falls back to a plain dot.
+ * Optional art lives in `public/img/pacman/` and is referenced by URL. Images
+ * load lazily (never during SSR) and are only drawn once decoded, so every draw
+ * path falls back to a shape until (or unless) the file is added.
  */
-const POWER_PELLET_SRC = "/img/pacman/power-pellet.png";
-let powerPelletImg: HTMLImageElement | null = null;
+const imageCache = new Map<string, HTMLImageElement>();
 
-function getPowerPelletImg(): HTMLImageElement | null {
-  if (powerPelletImg) return powerPelletImg;
+function loadImage(src: string): HTMLImageElement | null {
   if (typeof Image === "undefined") return null;
-  powerPelletImg = new Image();
-  powerPelletImg.src = POWER_PELLET_SRC;
-  return powerPelletImg;
+  let img = imageCache.get(src);
+  if (!img) {
+    img = new Image();
+    img.src = src;
+    imageCache.set(src, img);
+  }
+  return img;
 }
+
+function imageReady(img: HTMLImageElement | null): img is HTMLImageElement {
+  return img != null && img.complete && img.naturalWidth > 0;
+}
+
+const POWER_PELLET_SRC = "/img/pacman/power-pellet.png";
 
 function drawPowerPellet(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
 ) {
-  const img = getPowerPelletImg();
-  if (img && img.complete && img.naturalWidth > 0) {
+  const img = loadImage(POWER_PELLET_SRC);
+  if (imageReady(img)) {
     const w = TILE * 2.4;
     const h = w * (img.naturalHeight / img.naturalWidth);
     ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
@@ -65,6 +73,51 @@ function drawPowerPellet(
   ctx.beginPath();
   ctx.arc(cx, cy, TILE * 0.3, 0, Math.PI * 2);
   ctx.fill();
+}
+
+/**
+ * Ghost walk sprite: `public/img/pacman/ghost-<name>.png`, a single horizontal
+ * strip of `GHOST_SPRITE_FRAMES` equal-width frames facing right. The frame
+ * advances only while the ghost is moving and is flipped for leftward travel.
+ * Frightened and eaten ghosts keep their drawn look for now.
+ */
+const GHOST_SPRITE_FRAMES = 6;
+const GHOST_SPRITE_FPS = 10;
+/** On-screen height of a ghost sprite, in tiles. */
+const GHOST_SPRITE_TILES = 1.9;
+
+function drawGhostSprite(ctx: CanvasRenderingContext2D, g: Ghost): boolean {
+  const img = loadImage(`/img/pacman/ghost-${g.name}.png`);
+  if (!imageReady(img)) return false;
+
+  const fw = img.naturalWidth / GHOST_SPRITE_FRAMES;
+  const fh = img.naturalHeight;
+  const moving = g.phase !== "house";
+  const frame = moving
+    ? Math.floor(g.anim * GHOST_SPRITE_FPS) % GHOST_SPRITE_FRAMES
+    : 0;
+
+  const cx = g.x * TILE + TILE / 2;
+  const cy = g.y * TILE + TILE / 2;
+  const destH = TILE * GHOST_SPRITE_TILES;
+  const destW = destH * (fw / fh);
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (g.dir === "left") ctx.scale(-1, 1);
+  ctx.drawImage(
+    img,
+    frame * fw,
+    0,
+    fw,
+    fh,
+    -destW / 2,
+    -destH / 2,
+    destW,
+    destH,
+  );
+  ctx.restore();
+  return true;
 }
 
 function drawMaze(ctx: CanvasRenderingContext2D, pellets: Set<number>) {
@@ -199,6 +252,9 @@ function drawGhost(
     }
     return;
   }
+
+  // Prefer the walk sprite; fall back to the classic blob when it is missing.
+  if (drawGhostSprite(ctx, g)) return;
 
   drawGhostBody(ctx, cx, cy, r, g.color);
   drawGhostEyes(ctx, g, cx, cy, r);

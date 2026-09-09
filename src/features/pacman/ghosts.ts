@@ -28,6 +28,8 @@ export type Ghost = {
   corner: { x: number; y: number };
   /** House slot this ghost spawns in and returns to when eaten. */
   spawn: { x: number; y: number };
+  /** Seconds spent moving so far; drives the walk animation. */
+  anim: number;
 };
 
 /** Normal roaming speed, in tiles per second. */
@@ -41,7 +43,7 @@ const EPS = 1e-6;
 /** How close (in tiles) counts as catching Pac-Man. */
 export const CATCH_DIST = 0.5;
 
-type GhostDef = Omit<Ghost, "x" | "y" | "dir" | "phase" | "spawn">;
+type GhostDef = Omit<Ghost, "x" | "y" | "dir" | "phase" | "spawn" | "anim">;
 
 const DEFS: readonly GhostDef[] = [
   {
@@ -74,6 +76,7 @@ export function createGhosts(): Ghost[] {
     dir: "up" as Direction,
     phase:
       def.releaseAt === 0 ? ("exiting" as GhostPhase) : ("house" as GhostPhase),
+    anim: 0,
   }));
 }
 
@@ -96,6 +99,7 @@ export function updateGhosts(ghosts: Ghost[], ctx: GhostCtx, dt: number): void {
 
 function updateGhost(g: Ghost, ctx: GhostCtx, dt: number): void {
   if (g.phase === "eaten") {
+    g.anim += dt;
     if (glideTowards(g, g.spawn.x, g.spawn.y, EATEN_SPEED * dt)) {
       g.phase = "exiting";
     }
@@ -108,6 +112,7 @@ function updateGhost(g: Ghost, ctx: GhostCtx, dt: number): void {
   }
 
   if (g.phase === "exiting") {
+    g.anim += dt;
     if (
       glideTowards(
         g,
@@ -127,6 +132,7 @@ function updateGhost(g: Ghost, ctx: GhostCtx, dt: number): void {
 
   const speed = ctx.frightened ? FRIGHT_SPEED : GHOST_SPEED;
   let budget = speed * dt;
+  let moved = false;
   let guard = 0;
 
   while (budget > EPS && guard++ < 64) {
@@ -148,10 +154,13 @@ function updateGhost(g: Ghost, ctx: GhostCtx, dt: number): void {
     g.x += v.x * move;
     g.y += v.y * move;
     budget -= move;
+    moved ||= move > EPS;
 
     if (g.x < -0.5) g.x += MAZE_COLS;
     else if (g.x >= MAZE_COLS - 0.5) g.x -= MAZE_COLS;
   }
+
+  if (moved) g.anim += dt;
 }
 
 /**
