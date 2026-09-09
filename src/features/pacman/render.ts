@@ -1,6 +1,5 @@
+import type { Direction, GameState, Pac } from "./game";
 import { MAZE, MAZE_COLS, MAZE_ROWS, TILE } from "./maze";
-
-export type Direction = "up" | "down" | "left" | "right";
 
 /** Placeholder palette — will be replaced later. */
 const COLORS = {
@@ -17,15 +16,6 @@ const DIR_ANGLE: Record<Direction, number> = {
   down: Math.PI / 2,
   left: Math.PI,
   up: -Math.PI / 2,
-};
-
-export type PacState = {
-  /** Position in tile units (fractional while moving between tiles). */
-  x: number;
-  y: number;
-  dir: Direction;
-  /** Mouth openness, 0 (shut) to 1 (fully open). */
-  mouth: number;
 };
 
 function drawMaze(ctx: CanvasRenderingContext2D) {
@@ -58,11 +48,14 @@ function drawMaze(ctx: CanvasRenderingContext2D) {
   }
 }
 
-function drawPacman(ctx: CanvasRenderingContext2D, pac: PacState) {
+function drawPacman(ctx: CanvasRenderingContext2D, pac: Pac) {
   const cx = pac.x * TILE + TILE / 2;
   const cy = pac.y * TILE + TILE / 2;
   const radius = TILE * 0.45;
-  const half = (pac.mouth * Math.PI) / 4;
+
+  // Mouth chomps while moving, rests half-open when stopped.
+  const openness = pac.moving ? 0.5 - 0.5 * Math.cos(pac.anim * 16) : 0.4;
+  const half = (0.06 + 0.74 * openness) * (Math.PI / 4);
   const facing = DIR_ANGLE[pac.dir];
 
   ctx.fillStyle = COLORS.pacman;
@@ -74,12 +67,9 @@ function drawPacman(ctx: CanvasRenderingContext2D, pac: PacState) {
 }
 
 /** Clear the canvas and draw the current game state. */
-export function drawFrame(
-  ctx: CanvasRenderingContext2D,
-  state: { pac: PacState },
-) {
+export function drawFrame(ctx: CanvasRenderingContext2D, game: GameState) {
   ctx.fillStyle = COLORS.background;
   ctx.fillRect(0, 0, MAZE_COLS * TILE, MAZE_ROWS * TILE);
   drawMaze(ctx);
-  drawPacman(ctx, state.pac);
+  drawPacman(ctx, game.pac);
 }
