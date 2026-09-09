@@ -33,6 +33,40 @@ const DIR_ANGLE: Record<Direction, number> = {
   up: -Math.PI / 2,
 };
 
+/**
+ * Optional sprite for the power pellet, served from `public/img/pacman/`.
+ * Loaded lazily (never during SSR) and drawn only once it has decoded; until
+ * then `drawMaze` falls back to a plain dot.
+ */
+const POWER_PELLET_SRC = "/img/pacman/power-pellet.png";
+let powerPelletImg: HTMLImageElement | null = null;
+
+function getPowerPelletImg(): HTMLImageElement | null {
+  if (powerPelletImg) return powerPelletImg;
+  if (typeof Image === "undefined") return null;
+  powerPelletImg = new Image();
+  powerPelletImg.src = POWER_PELLET_SRC;
+  return powerPelletImg;
+}
+
+function drawPowerPellet(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+) {
+  const img = getPowerPelletImg();
+  if (img && img.complete && img.naturalWidth > 0) {
+    const w = TILE * 2.4;
+    const h = w * (img.naturalHeight / img.naturalWidth);
+    ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+    return;
+  }
+  ctx.fillStyle = COLORS.power;
+  ctx.beginPath();
+  ctx.arc(cx, cy, TILE * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function drawMaze(ctx: CanvasRenderingContext2D, pellets: Set<number>) {
   for (let row = 0; row < MAZE_ROWS; row++) {
     for (let col = 0; col < MAZE_COLS; col++) {
@@ -50,10 +84,14 @@ function drawMaze(ctx: CanvasRenderingContext2D, pellets: Set<number>) {
         ctx.fillRect(x, cy - 1, TILE, 2);
       } else if (tile === "pellet" || tile === "power") {
         if (!pellets.has(pelletKey(col, row))) continue;
-        ctx.fillStyle = tile === "power" ? COLORS.power : COLORS.pellet;
-        ctx.beginPath();
-        ctx.arc(cx, cy, TILE * (tile === "power" ? 0.3 : 0.1), 0, Math.PI * 2);
-        ctx.fill();
+        if (tile === "power") {
+          drawPowerPellet(ctx, cx, cy);
+        } else {
+          ctx.fillStyle = COLORS.pellet;
+          ctx.beginPath();
+          ctx.arc(cx, cy, TILE * 0.1, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
   }
