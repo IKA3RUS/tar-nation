@@ -32,18 +32,20 @@ export type Ghost = {
   anim: number;
 };
 
-/** Normal roaming speed, in tiles per second. */
-const GHOST_SPEED = 6.75;
-/** Slower shuffle while frightened. */
-const FRIGHT_SPEED = 4.5;
+/**
+ * Normal roaming speed, in tiles per second. Kept below Pac-Man's 7.5 even at
+ * the end-of-round ramp, so a straight chase can't catch a fleeing player —
+ * doctors have to cut corners to intercept.
+ */
+const GHOST_SPEED = 6;
 /** Eyes rush home quickly. */
 const EATEN_SPEED = 14;
 const EPS = 1e-6;
 
-/** Roaming/frightened speed ramps up to this multiplier over the round. */
-const MAX_SPEED_MULT = 1.5;
+/** Roaming speed ramps up to this multiplier over the round. */
+const MAX_SPEED_MULT = 1.2;
 /** Seconds to reach the full speed-up ramp (matches the round time limit). */
-const SPEED_RAMP_SECS = 60;
+const SPEED_RAMP_SECS = 120;
 
 /** How much faster ghosts are moving at this point in the round. */
 function speedMultiplier(elapsed: number): number {
@@ -55,14 +57,17 @@ export const CATCH_DIST = 0.5;
 
 type GhostDef = Omit<Ghost, "x" | "y" | "dir" | "phase" | "spawn" | "anim">;
 
-const DEFS: readonly GhostDef[] = [
+/** How many doctors are on the board. */
+const DOCTOR_COUNT = 1;
+
+const ALL_DEFS: readonly GhostDef[] = [
   {
     name: "blinky",
     color: "#ff0000",
     releaseAt: 0,
     corner: { x: MAZE_COLS - 3, y: -2 },
   },
-  { name: "pinky", color: "#ffb8ff", releaseAt: 3, corner: { x: 2, y: -2 } },
+  { name: "pinky", color: "#ffb8ff", releaseAt: 2, corner: { x: 2, y: -2 } },
   {
     name: "inky",
     color: "#00ffff",
@@ -76,6 +81,8 @@ const DEFS: readonly GhostDef[] = [
     corner: { x: 0, y: MAZE_ROWS + 1 },
   },
 ];
+
+const DEFS = ALL_DEFS.slice(0, DOCTOR_COUNT);
 
 export function createGhosts(): Ghost[] {
   return DEFS.map((def, i) => ({
@@ -97,8 +104,6 @@ export type GhostCtx = {
   mode: "scatter" | "chase";
   /** True on the frame the scatter/chase phase flips. */
   modeChanged: boolean;
-  /** True while a power pellet is active. */
-  frightened: boolean;
   /** Seconds since play started. */
   elapsed: number;
 };
@@ -138,11 +143,9 @@ function updateGhost(g: Ghost, ctx: GhostCtx, dt: number): void {
   }
 
   // phase === "out"
-  if (ctx.modeChanged && !ctx.frightened) g.dir = OPPOSITE[g.dir];
+  if (ctx.modeChanged) g.dir = OPPOSITE[g.dir];
 
-  const speed =
-    (ctx.frightened ? FRIGHT_SPEED : GHOST_SPEED) *
-    speedMultiplier(ctx.elapsed);
+  const speed = GHOST_SPEED * speedMultiplier(ctx.elapsed);
   let budget = speed * dt;
   let moved = false;
   let guard = 0;
@@ -155,7 +158,7 @@ function updateGhost(g: Ghost, ctx: GhostCtx, dt: number): void {
     if (onCenter) {
       g.x = Math.round(g.x);
       g.y = Math.round(g.y);
-      g.dir = ctx.frightened ? wanderDir(g) : chooseDir(g, ctx);
+      g.dir = chooseDir(g, ctx);
     }
 
     const v = VEC[g.dir];
@@ -261,10 +264,4 @@ function chooseDir(g: Ghost, ctx: GhostCtx): Direction {
     }
   }
   return best;
-}
-
-/** Frightened ghosts pick a random available exit. */
-function wanderDir(g: Ghost): Direction {
-  const open = exits(g);
-  return open[Math.floor(Math.random() * open.length)];
 }
