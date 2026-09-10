@@ -71,7 +71,7 @@ function imageReady(img: HTMLImageElement | null): img is HTMLImageElement {
 }
 
 /** Item types A-E; each has its own sprite, `power-pellet-<n>.png` (1-based). */
-export const POWER_ITEM_TYPES = ["A", "B", "C", "D", "E"];
+export const POWER_ITEM_TYPES = ["A", "B", "C", "D"];
 
 /**
  * Per-type glow; index = type (`power-pellet-<index+1>.png`). `blur` widens the
@@ -83,7 +83,6 @@ const POWER_GLOW: { blur: number; passes: number }[] = [
   { blur: 1.3, passes: 6 },
   { blur: 0.6, passes: 1 },
   { blur: 0.6, passes: 1 },
-  { blur: 1, passes: 2 },
 ];
 const POWER_GLOW_DEFAULT = { blur: 1, passes: 2 };
 
@@ -145,7 +144,11 @@ const GHOST_SPRITE_SRC = "/img/pacman/doctor.png";
  */
 const GHOST_SPRITE_TILES = 1.1;
 
-function drawGhostSprite(ctx: CanvasRenderingContext2D, g: Ghost): boolean {
+function drawGhostSprite(
+  ctx: CanvasRenderingContext2D,
+  g: Ghost,
+  invert = false,
+): boolean {
   const img = loadImage(GHOST_SPRITE_SRC);
   if (!imageReady(img)) return false;
 
@@ -153,8 +156,18 @@ function drawGhostSprite(ctx: CanvasRenderingContext2D, g: Ghost): boolean {
   const cy = g.y * TILE + TILE / 2;
   const destH = TILE * GHOST_SPRITE_TILES;
   const destW = destH * (img.naturalWidth / img.naturalHeight);
+  const dx = cx - destW / 2;
+  const dy = cy - destH / 2;
 
-  ctx.drawImage(img, cx - destW / 2, cy - destH / 2, destW, destH);
+  if (invert) {
+    ctx.save();
+    // `filter` is client-only and a no-op where unsupported (draws normal).
+    ctx.filter = "invert(1)";
+    ctx.drawImage(img, dx, dy, destW, destH);
+    ctx.restore();
+  } else {
+    ctx.drawImage(img, dx, dy, destW, destH);
+  }
   return true;
 }
 
@@ -362,6 +375,13 @@ function drawGhost(
   }
 
   if (frightened && g.phase === "out") {
+    // Vulnerable: blink the doctor sprite between normal and colour-inverted,
+    // faster once the power pellet is about to wear off.
+    const period = flashing ? 90 : 160;
+    const invert = Math.floor(performance.now() / period) % 2 === 0;
+    if (drawGhostSprite(ctx, g, invert)) return;
+
+    // Fallback when the sprite is missing: the classic blue blob.
     const body = flashing ? COLORS.frightenedFlash : COLORS.frightened;
     drawGhostBody(ctx, cx, cy, r, body);
     ctx.fillStyle = flashing ? "#d00000" : COLORS.eyeWhite;

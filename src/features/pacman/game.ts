@@ -53,9 +53,9 @@ const POWER_ITEM_MIN_DIST = 10;
  * active item, so they can't land on top of (or right next to) each other.
  */
 const POWER_ITEM_SPACING = 6;
-/** Total number of power item types (A-E), independent of how many are
+/** Total number of power item types (A-D), independent of how many are
  * currently active (`POWER_ITEM_TARGET`). */
-const POWER_ITEM_TYPE_COUNT = 5;
+const POWER_ITEM_TYPE_COUNT = 4;
 
 /** Positions closer than this (in tiles) count as tile-aligned. */
 const EPS = 1e-6;

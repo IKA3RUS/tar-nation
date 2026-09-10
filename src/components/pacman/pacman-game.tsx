@@ -1,5 +1,6 @@
-import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+
+import { Link } from "@tanstack/react-router";
 
 import {
   createGame,
@@ -13,6 +14,7 @@ import {
   drawFrame,
   END_SCREEN_BUTTON_TOP,
 } from "#/features/pacman/render";
+import { computeResult, RESULT_STORAGE_KEY } from "#/features/pacman/stats";
 
 const KEY_TO_DIR: Record<string, Direction> = {
   ArrowUp: "up",
@@ -59,6 +61,19 @@ export function PacmanGame() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  // When the round ends, hand the computed comparison to the visualisation
+  // page via localStorage (survives the navigation, works in prod too).
+  useEffect(() => {
+    if (!ended) return;
+    const result = computeResult(gameRef.current.collectedCounts);
+    if (!result) return;
+    try {
+      localStorage.setItem(RESULT_STORAGE_KEY, JSON.stringify(result));
+    } catch {
+      // ignore private-mode / storage-disabled failures
+    }
+  }, [ended]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const game = gameRef.current;
@@ -100,7 +115,7 @@ export function PacmanGame() {
           className="absolute left-1/2 -translate-x-1/2 rounded border border-white/40 bg-black/60 px-3 py-1 text-sm text-white hover:bg-white/10"
           style={{ top: END_SCREEN_BUTTON_TOP }}
         >
-          View Datavis
+          View Details
         </Link>
       )}
     </div>
