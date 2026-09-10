@@ -80,47 +80,23 @@ function drawPowerPellet(
 }
 
 /**
- * Ghost walk sprite: `public/img/pacman/ghost-<name>.png`, a single horizontal
- * strip of `GHOST_SPRITE_FRAMES` equal-width frames facing right. The frame
- * advances only while the ghost is moving and is flipped for leftward travel.
- * Frightened and eaten ghosts keep their drawn look for now.
+ * Ghost sprite: `public/img/pacman/doctor.png`, one static portrait shared
+ * by every ghost. Frightened and eaten ghosts keep their drawn look.
  */
-const GHOST_SPRITE_FRAMES = 6;
-const GHOST_SPRITE_FPS = 10;
+const GHOST_SPRITE_SRC = "/img/pacman/doctor.png";
 /** On-screen height of a ghost sprite, in tiles. */
 const GHOST_SPRITE_TILES = 1.9;
 
 function drawGhostSprite(ctx: CanvasRenderingContext2D, g: Ghost): boolean {
-  const img = loadImage(`/img/pacman/ghost-${g.name}.png`);
+  const img = loadImage(GHOST_SPRITE_SRC);
   if (!imageReady(img)) return false;
-
-  const fw = img.naturalWidth / GHOST_SPRITE_FRAMES;
-  const fh = img.naturalHeight;
-  const moving = g.phase !== "house";
-  const frame = moving
-    ? Math.floor(g.anim * GHOST_SPRITE_FPS) % GHOST_SPRITE_FRAMES
-    : 0;
 
   const cx = g.x * TILE + TILE / 2;
   const cy = g.y * TILE + TILE / 2;
   const destH = TILE * GHOST_SPRITE_TILES;
-  const destW = destH * (fw / fh);
+  const destW = destH * (img.naturalWidth / img.naturalHeight);
 
-  ctx.save();
-  ctx.translate(cx, cy);
-  if (g.dir === "left") ctx.scale(-1, 1);
-  ctx.drawImage(
-    img,
-    frame * fw,
-    0,
-    fw,
-    fh,
-    -destW / 2,
-    -destH / 2,
-    destW,
-    destH,
-  );
-  ctx.restore();
+  ctx.drawImage(img, cx - destW / 2, cy - destH / 2, destW, destH);
   return true;
 }
 
@@ -339,22 +315,23 @@ function drawTimer(
   ctx.fillText(formatTime(remaining), CANVAS_W / 2, midY);
 }
 
-/** One badge per item type; lit up once that type has been collected. */
+/** One badge per item type, showing how many of that type have been eaten. */
 function drawCollectedTypes(
   ctx: CanvasRenderingContext2D,
-  collected: Set<number>,
+  collectedCounts: number[],
   midY: number,
 ) {
-  const size = TILE * 0.8;
+  const size = TILE * 1.3;
   const gap = TILE * 0.25;
 
-  ctx.font = `${TILE * 0.6}px monospace`;
+  ctx.font = `${TILE * 0.5}px monospace`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "center";
 
   POWER_ITEM_TYPES.forEach((letter, type) => {
     const x = TILE / 2 + type * (size + gap);
-    const got = collected.has(type);
+    const count = collectedCounts[type];
+    const got = count > 0;
 
     ctx.fillStyle = got ? COLORS.pacman : COLORS.gaugeBg;
     ctx.fillRect(x, midY - size / 2, size, size);
@@ -363,7 +340,7 @@ function drawCollectedTypes(
     ctx.strokeRect(x, midY - size / 2, size, size);
 
     ctx.fillStyle = got ? COLORS.background : COLORS.hint;
-    ctx.fillText(letter, x + size / 2, midY + 1);
+    ctx.fillText(got ? `${letter}×${count}` : letter, x + size / 2, midY + 1);
   });
 }
 
@@ -378,7 +355,7 @@ function drawHeader(ctx: CanvasRenderingContext2D, game: GameState) {
   ctx.fillText(`SCORE ${game.score}`, TILE / 2, row1Y);
   drawTimer(ctx, game.elapsed, row1Y);
 
-  drawCollectedTypes(ctx, game.collectedTypes, row2Y);
+  drawCollectedTypes(ctx, game.collectedCounts, row2Y);
   drawHealthGauge(ctx, game.health, row2Y);
 }
 

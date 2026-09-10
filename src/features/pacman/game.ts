@@ -48,6 +48,9 @@ const POWER_ITEM_TARGET = 4;
  * can't be scooped up right away and ghosts stay a real threat.
  */
 const POWER_ITEM_MIN_DIST = 10;
+/** Total number of power item types (A-E), independent of how many are
+ * currently active (`POWER_ITEM_TARGET`). */
+const POWER_ITEM_TYPE_COUNT = 5;
 
 /** Positions closer than this (in tiles) count as tile-aligned. */
 const EPS = 1e-6;
@@ -77,8 +80,8 @@ export type GameState = {
   /** Keys of pellet tiles currently upgraded to a power item, mapped to
    * their type index (0-based; see `POWER_ITEM_TARGET`). */
   powerItems: Map<number, number>;
-  /** Type indices of power items eaten at least once this round. */
-  collectedTypes: Set<number>;
+  /** How many of each power item type (A-E) have been eaten this round. */
+  collectedCounts: number[];
   pac: Pac;
   ghosts: Ghost[];
   /** Seconds since play started. */
@@ -112,7 +115,7 @@ export function createGame(): GameState {
     health: MAX_HEALTH,
     pellets: initialPellets(),
     powerItems: new Map(),
-    collectedTypes: new Set(),
+    collectedCounts: new Array(POWER_ITEM_TYPE_COUNT).fill(0),
     pac: spawnPac(),
     ghosts: createGhosts(),
     elapsed: 0,
@@ -133,7 +136,7 @@ export function resetGame(state: GameState): void {
   state.health = MAX_HEALTH;
   state.pellets = initialPellets();
   state.powerItems = new Map();
-  state.collectedTypes = new Set();
+  state.collectedCounts = new Array(POWER_ITEM_TYPE_COUNT).fill(0);
   state.ghostChain = 0;
   state.pauseLeft = 0;
   resetActors(state);
@@ -198,7 +201,8 @@ function eatPellet(state: GameState, col: number, row: number): void {
   state.score += isPower ? POWER_POINTS : PELLET_POINTS;
 
   if (isPower) {
-    state.collectedTypes.add(state.powerItems.get(key)!);
+    const type = state.powerItems.get(key)!;
+    state.collectedCounts[type] += 1;
     state.powerItems.delete(key);
     state.frightenedLeft = FRIGHT_SECS;
     state.ghostChain = 0;

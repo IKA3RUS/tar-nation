@@ -9,10 +9,7 @@ is missing or still loading, so art can be dropped in or swapped any time.
 | File | Used for | Format |
 | --- | --- | --- |
 | `power-pellet-1.png` … `power-pellet-5.png` | power item types A-E | single image per type, transparent background; drawn centered on the tile, aspect ratio kept |
-| `ghost-blinky.png` | Blinky's walk cycle | horizontal sprite strip — see below |
-| `ghost-pinky.png` | Pinky's walk cycle | " |
-| `ghost-inky.png` | Inky's walk cycle | " |
-| `ghost-clyde.png` | Clyde's walk cycle | " |
+| `doctor.png` | all four ghosts | single static image, shared by every ghost; drawn centered on the ghost's tile, aspect ratio kept |
 
 ## Power item types
 
@@ -30,17 +27,13 @@ is missing or still loading, so art can be dropped in or swapped any time.
   `power-pellet.png` as placeholders — swap in distinct art per type
   whenever it's ready.
 
-## Ghost walk strip
+## Ghost sprite
 
-- One PNG per ghost, transparent background.
-- A **single horizontal row** of equal-width frames, character **facing right**.
-- Frame count and speed are set in
-  [`src/features/pacman/render.ts`](../../../src/features/pacman/render.ts)
-  (`GHOST_SPRITE_FRAMES`, default 6; `GHOST_SPRITE_FPS`, default 10).
-- The frame index advances only while the ghost is moving; it is mirrored
-  automatically when the ghost walks left. Up / down reuse the side view.
-- On-screen size is `GHOST_SPRITE_TILES` tall (default 1.9 tiles), width scaled
-  to the frame's aspect ratio, centered on the ghost's tile.
+- `doctor.png`, one shared static image for all four ghosts (no per-ghost
+  art, no walk animation, no direction flip).
+- On-screen size is `GHOST_SPRITE_TILES` tall (default 1.9 tiles), width
+  scaled to the image's aspect ratio, centered on the ghost's tile — set in
+  [`src/features/pacman/render.ts`](../../../src/features/pacman/render.ts).
 - Frightened and eaten ghosts still use the drawn look — add
   `ghost-frightened.png` / `ghost-eyes.png` handling in `render.ts` later if
   wanted.
