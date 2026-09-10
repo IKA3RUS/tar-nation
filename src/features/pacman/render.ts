@@ -150,7 +150,33 @@ function drawMaze(ctx: CanvasRenderingContext2D, pellets: Set<number>) {
   }
 }
 
+/**
+ * Player sprite: `public/img/pacman/mukesh.png`, a single static image
+ * facing right. Rotated to match the current direction; falls back to the
+ * drawn, animated mouth when the file is missing or still loading.
+ */
+const PACMAN_SRC = "/img/pacman/mukesh.png";
+
+function drawPacmanSprite(ctx: CanvasRenderingContext2D, pac: Pac): boolean {
+  const img = loadImage(PACMAN_SRC);
+  if (!imageReady(img)) return false;
+
+  const cx = pac.x * TILE + TILE / 2;
+  const cy = pac.y * TILE + TILE / 2;
+  const w = TILE * 1.1;
+  const h = w * (img.naturalHeight / img.naturalWidth);
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(DIR_ANGLE[pac.dir]);
+  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  ctx.restore();
+  return true;
+}
+
 function drawPacman(ctx: CanvasRenderingContext2D, pac: Pac) {
+  if (drawPacmanSprite(ctx, pac)) return;
+
   const cx = pac.x * TILE + TILE / 2;
   const cy = pac.y * TILE + TILE / 2;
   const radius = TILE * 0.45;
