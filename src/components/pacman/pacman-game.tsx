@@ -13,8 +13,9 @@ import {
   CANVAS_W,
   drawFrame,
   END_SCREEN_BUTTON_TOP,
+  END_SCREEN_CENTER_X,
 } from "#/features/pacman/render";
-import { computeResult, RESULT_STORAGE_KEY } from "#/features/pacman/stats";
+import { computeResult, type PacmanResult } from "#/features/pacman/stats";
 
 const KEY_TO_DIR: Record<string, Direction> = {
   ArrowUp: "up",
@@ -35,6 +36,7 @@ export function PacmanGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef(createGame());
   const [ended, setEnded] = useState(false);
+  const [result, setResult] = useState<PacmanResult | null>(null);
 
   useEffect(() => {
     const ctx = canvasRef.current?.getContext("2d");
@@ -49,11 +51,7 @@ export function PacmanGame() {
       last = now;
       step(game, dt);
       drawFrame(ctx, game);
-      setEnded(
-        game.status === "won" ||
-          game.status === "lost" ||
-          game.status === "timeout",
-      );
+      setEnded(game.status === "lost" || game.status === "timeout");
       raf = requestAnimationFrame(frame);
     };
 
@@ -61,28 +59,22 @@ export function PacmanGame() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // When the round ends, hand the computed comparison to the visualisation
-  // page via localStorage (survives the navigation, works in prod too).
+  // Compute the comparison once the round ends; it is handed to `/map` through
+  // the "View Details" link's navigation state (no shared storage).
   useEffect(() => {
-    if (!ended) return;
-    const result = computeResult(gameRef.current.collectedCounts);
-    if (!result) return;
-    try {
-      localStorage.setItem(RESULT_STORAGE_KEY, JSON.stringify(result));
-    } catch {
-      // ignore private-mode / storage-disabled failures
+    if (!ended) {
+      setResult(null);
+      return;
     }
+    const game = gameRef.current;
+    setResult(computeResult(game.collectedCounts, game.catches));
   }, [ended]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const game = gameRef.current;
 
-      if (
-        game.status === "won" ||
-        game.status === "lost" ||
-        game.status === "timeout"
-      ) {
+      if (game.status === "lost" || game.status === "timeout") {
         if (e.key === "r" || e.key === "R") {
           e.preventDefault();
           resetGame(game);
@@ -109,11 +101,12 @@ export function PacmanGame() {
         height={CANVAS_H}
         className="block"
       />
-      {ended && (
+      {ended && result && (
         <Link
-          to="/"
-          className="absolute left-1/2 -translate-x-1/2 rounded border border-white/40 bg-black/60 px-3 py-1 text-sm text-white hover:bg-white/10"
-          style={{ top: END_SCREEN_BUTTON_TOP }}
+          to="/map"
+          state={{ pacmanResult: result }}
+          className="absolute -translate-x-1/2 border-2 border-[#ffff00] bg-black px-4 py-1.5 font-mono text-sm font-bold tracking-widest text-[#ffff00] uppercase hover:bg-[#ffff00] hover:text-black"
+          style={{ top: END_SCREEN_BUTTON_TOP, left: END_SCREEN_CENTER_X }}
         >
           View Details
         </Link>

@@ -1,8 +1,9 @@
 import { OPPOSITE, VEC, distToNextCenter, type Direction } from "./dir";
 import { CATCH_DIST, createGhosts, updateGhosts, type Ghost } from "./ghosts";
 import {
-  initialPellets,
+  MAZE,
   MAZE_COLS,
+  MAZE_ROWS,
   PAC_SPAWN,
   pelletKey,
   tileAt,
@@ -10,52 +11,50 @@ import {
 
 export type { Direction } from "./dir";
 
-export type GameStatus = "ready" | "playing" | "won" | "lost" | "timeout";
+export type GameStatus = "ready" | "playing" | "lost" | "timeout";
 export type GameMode = "scatter" | "chase";
 
 /** Pac-Man speed in tiles per second. */
 const PAC_SPEED = 7.5;
 
-/** Round time limit, in seconds; running out ends the round. */
-export const ROUND_SECONDS = 60;
+/** Round time limit, in seconds; surviving to it ends the round (§8). */
+export const ROUND_SECONDS = 120;
 
 /** Points awarded per item eaten. */
-const PELLET_POINTS = 10;
-const POWER_POINTS = 50;
+const ITEM_POINTS = 50;
+
+/**
+ * Spawn model (§3-5). A run draws one Dirichlet mix; every wave has the same
+ * deterministic composition from it; a wave is cleared once
+ * `ITEMS_PER_WAVE_CONSUMED` of its `WAVE_SIZE` items are eaten, at which point
+ * the leftovers despawn and the next wave spawns.
+ */
+const DIRICHLET_ALPHA = 2.0;
+const WAVE_SIZE = 12;
+const CLEAR_THRESHOLD = 0.8;
+const ITEMS_PER_WAVE_CONSUMED = Math.ceil(WAVE_SIZE * CLEAR_THRESHOLD);
+/** No item spawns within this many tiles of the player (§4.3). */
+const SAFE_RADIUS = 4;
 
 /** Length of each scatter / chase phase, in seconds. */
 const SCATTER_SECS = 7;
 const CHASE_SECS = 20;
 
-/** How long ghosts stay frightened after a power pellet, in seconds. */
-const FRIGHT_SECS = 2;
-/** Score for each ghost eaten during one power pellet. */
-const GHOST_SCORES = [200, 400, 800, 1600];
+/** Health gauge, 0..MAX_HEALTH, shown as 5 lungs (§6). ~45 items to die. */
+export const MAX_HEALTH = 45;
+/** Total HP an eaten item removes (spec §6: 1/45 of MAX_HEALTH). */
+const HP_PER_ITEM = 1;
+/** Share of an item's HP that lands the instant it is eaten. */
+const HP_INSTANT_FRAC = 0.6;
+/** The rest lingers as an aftertaste, bled out over this many seconds. */
+const SMOKE_SECS = 2.5;
+/** Lingering HP per item (drains to 0 over SMOKE_SECS). */
+const RESIDUAL_HP = HP_PER_ITEM * (1 - HP_INSTANT_FRAC);
+/** Fraction of max HP a doctor restores on contact (§7). */
+const DOCTOR_RESTORE = 0.45;
 
-/** Health gauge runs 0-100; a ghost catch always heals back to this cap. */
-const MAX_HEALTH = 100;
-/** Percent of the health gauge a power pellet costs. */
-const POWER_HEALTH_COST = 25;
-
-/**
- * How many power items stay active on the board at once. Items spawn on
- * random remaining pellet tiles and are replenished as soon as one is eaten,
- * so the supply never runs out. Planned to go up to 5 later.
- */
-const POWER_ITEM_TARGET = 4;
-/**
- * Power items must spawn at least this many tiles from Pac-Man, so they
- * can't be scooped up right away and ghosts stay a real threat.
- */
-const POWER_ITEM_MIN_DIST = 10;
-/**
- * Power items must also spawn at least this many tiles from every other
- * active item, so they can't land on top of (or right next to) each other.
- */
-const POWER_ITEM_SPACING = 6;
-/** Total number of power item types (A-D), independent of how many are
- * currently active (`POWER_ITEM_TARGET`). */
-const POWER_ITEM_TYPE_COUNT = 4;
+/** Number of item types (A-D); see `stats.ts` for the product mapping. */
+const N_BINS = 4;
 
 /** Positions closer than this (in tiles) count as tile-aligned. */
 const EPS = 1e-6;
@@ -75,18 +74,23 @@ export type Pac = {
 };
 
 export type GameState = {
-  /** `ready` until the first key press; `won` / `lost` end the round. */
+  /** `ready` until the first key press; `lost` / `timeout` end the round. */
   status: GameStatus;
   score: number;
-  /** Health gauge, 0-100. */
+  /** Health gauge, 0..MAX_HEALTH. */
   health: number;
-  /** Keys (see `pelletKey`) of pellets not yet eaten. */
-  pellets: Set<number>;
-  /** Keys of pellet tiles currently upgraded to a power item, mapped to
-   * their type index (0-based; see `POWER_ITEM_TARGET`). */
+  /** This run's Dirichlet spawn mix, 4 values summing to 1 (§3). */
+  mix: number[];
+  /** 1-based wave counter. */
+  wave: number;
+  /** Items eaten from the current wave (§5). */
+  eatenInWave: number;
+  /** Tile key (see `pelletKey`) -> item type index (0-3) for live items. */
   powerItems: Map<number, number>;
-  /** How many of each power item type (A-E) have been eaten this round. */
+  /** How many of each item type (A-D) have been eaten this round. */
   collectedCounts: number[];
+  /** Remaining HP of each still-smouldering item (§6 DoT). */
+  smokePools: number[];
   pac: Pac;
   ghosts: Ghost[];
   /** Seconds since play started. */
@@ -94,10 +98,10 @@ export type GameState = {
   mode: GameMode;
   /** Seconds left in the current scatter / chase phase. */
   modeLeft: number;
-  /** Seconds left of frightened ghosts; 0 when inactive. */
-  frightenedLeft: number;
-  /** How many ghosts eaten so far in the current power pellet. */
-  ghostChain: number;
+  /** How many times a doctor has caught the player (§7). */
+  catches: number;
+  /** True while overlapping a doctor, so one contact = one catch. */
+  inDoctorContact: boolean;
   /** Seconds left of the post-death freeze. */
   pauseLeft: number;
 };
@@ -118,19 +122,22 @@ export function createGame(): GameState {
     status: "ready",
     score: 0,
     health: MAX_HEALTH,
-    pellets: initialPellets(),
+    mix: dirichlet(DIRICHLET_ALPHA, N_BINS),
+    wave: 0,
+    eatenInWave: 0,
     powerItems: new Map(),
-    collectedCounts: new Array(POWER_ITEM_TYPE_COUNT).fill(0),
+    collectedCounts: new Array(N_BINS).fill(0),
+    smokePools: [],
     pac: spawnPac(),
     ghosts: createGhosts(),
     elapsed: 0,
     mode: "scatter",
     modeLeft: SCATTER_SECS,
-    frightenedLeft: 0,
-    ghostChain: 0,
+    catches: 0,
+    inDoctorContact: false,
     pauseLeft: 0,
   };
-  spawnPowerItems(state);
+  advanceWave(state);
   return state;
 }
 
@@ -139,63 +146,150 @@ export function resetGame(state: GameState): void {
   state.status = "ready";
   state.score = 0;
   state.health = MAX_HEALTH;
-  state.pellets = initialPellets();
+  state.mix = dirichlet(DIRICHLET_ALPHA, N_BINS);
+  state.wave = 0;
+  state.eatenInWave = 0;
   state.powerItems = new Map();
-  state.collectedCounts = new Array(POWER_ITEM_TYPE_COUNT).fill(0);
-  state.ghostChain = 0;
+  state.collectedCounts = new Array(N_BINS).fill(0);
+  state.smokePools = [];
+  state.catches = 0;
   state.pauseLeft = 0;
   resetActors(state);
-  spawnPowerItems(state);
+  advanceWave(state);
 }
 
-/**
- * Top the active power items back up to `POWER_ITEM_TARGET` by upgrading
- * random still-uneaten pellet tiles, so the supply never runs dry. Each of
- * the `POWER_ITEM_TARGET` slots keeps the same type index across respawns,
- * so a slot's letter and sprite stay stable while it moves around the maze.
- */
 function tilePos(key: number): { col: number; row: number } {
   return { col: key % MAZE_COLS, row: Math.floor(key / MAZE_COLS) };
 }
 
-function spawnPowerItems(state: GameState): void {
-  const activeTypes = new Set(state.powerItems.values());
+// --- Spawn mix, wave composition and placement (§3-5) -----------------------
 
-  for (let type = 0; type < POWER_ITEM_TARGET; type++) {
-    if (activeTypes.has(type)) continue;
+/** Standard normal via Box-Muller. */
+function randNormal(): number {
+  let u = 0;
+  let v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
 
-    // Tiles already holding a power item can never be picked again, which
-    // also rules out two items ever landing on the same tile.
-    const candidates = [...state.pellets].filter(
-      (key) => !state.powerItems.has(key),
+/** Gamma(alpha, 1) via Marsaglia-Tsang; alpha >= 1 (ours is 1.5-2.0). */
+function randGamma(alpha: number): number {
+  const d = alpha - 1 / 3;
+  const c = 1 / Math.sqrt(9 * d);
+  for (let i = 0; i < 1000; i++) {
+    const x = randNormal();
+    const v = (1 + c * x) ** 3;
+    if (v <= 0) continue;
+    const u = Math.random();
+    if (u < 1 - 0.0331 * x ** 4) return d * v;
+    if (Math.log(u) < 0.5 * x ** 2 + d * (1 - v + Math.log(v))) return d * v;
+  }
+  return d;
+}
+
+/** Symmetric Dirichlet draw: `k` values summing to 1 (§3). */
+function dirichlet(alpha: number, k: number): number[] {
+  const g = Array.from({ length: k }, () => randGamma(alpha));
+  const sum = g.reduce((a, b) => a + b, 0);
+  return sum > 0 ? g.map((x) => x / sum) : g.map(() => 1 / k);
+}
+
+/** Largest-remainder split of `WAVE_SIZE` by `mix`; identical every wave (§4.2). */
+function waveComposition(mix: number[]): number[] {
+  const raw = mix.map((m) => m * WAVE_SIZE);
+  const base = raw.map((x) => Math.floor(x));
+  const short = WAVE_SIZE - base.reduce((a, b) => a + b, 0);
+  // Largest fractional part first; ties by lower bin index (§10).
+  const order = raw
+    .map((_, i) => i)
+    .sort((a, b) => raw[b] - base[b] - (raw[a] - base[a]) || a - b);
+  for (let k = 0; k < short; k++) base[order[k]] += 1;
+  return base;
+}
+
+function shuffle<T>(arr: readonly T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** Walkable item tiles split into four maze quadrants (§4.3 regions). */
+function buildRegions(): number[][] {
+  const regions: number[][] = [[], [], [], []];
+  for (let row = 0; row < MAZE_ROWS; row++) {
+    for (let col = 0; col < MAZE_COLS; col++) {
+      const tile = MAZE[row][col];
+      if (tile !== "pellet" && tile !== "power") continue;
+      const q = (row < MAZE_ROWS / 2 ? 0 : 2) + (col < MAZE_COLS / 2 ? 0 : 1);
+      regions[q].push(pelletKey(col, row));
+    }
+  }
+  return regions;
+}
+
+const REGIONS = buildRegions();
+
+/** Keep same-type items at least this many tiles apart. */
+const ITEM_SPACING = 3;
+
+/**
+ * `count` tiles for one type, spread across its region (not piled): each region
+ * holds one product type so types stay spatially separable (§4.3), but the
+ * items themselves are scattered, kept `ITEM_SPACING` apart where possible and
+ * clear of Pac-Man's `SAFE_RADIUS`.
+ */
+function pickInRegion(
+  tiles: readonly number[],
+  count: number,
+  pacCol: number,
+  pacRow: number,
+): number[] {
+  const safe = tiles.filter((key) => {
+    const p = tilePos(key);
+    return Math.hypot(p.col - pacCol, p.row - pacRow) >= SAFE_RADIUS;
+  });
+  const pool = shuffle(safe.length >= count ? safe : tiles);
+
+  const picked: number[] = [];
+  for (const key of pool) {
+    if (picked.length >= count) break;
+    const p = tilePos(key);
+    const spaced = picked.every((k) => {
+      const q = tilePos(k);
+      return Math.hypot(p.col - q.col, p.row - q.row) >= ITEM_SPACING;
+    });
+    if (spaced) picked.push(key);
+  }
+  // Top up with the nearest-anyway tiles if spacing was too tight to fill.
+  for (const key of pool) {
+    if (picked.length >= count) break;
+    if (!picked.includes(key)) picked.push(key);
+  }
+  return picked;
+}
+
+/** Despawn the current wave's leftovers and lay out the next one (§4-5). */
+function advanceWave(state: GameState): void {
+  state.powerItems.clear();
+  state.eatenInWave = 0;
+  state.wave += 1;
+
+  const comp = waveComposition(state.mix);
+  const regionForType = shuffle([0, 1, 2, 3]);
+
+  for (let type = 0; type < N_BINS; type++) {
+    if (comp[type] === 0) continue;
+    const tiles = pickInRegion(
+      REGIONS[regionForType[type]],
+      comp[type],
+      state.pac.x,
+      state.pac.y,
     );
-    if (candidates.length === 0) break;
-
-    const activePositions = [...state.powerItems.keys()].map(tilePos);
-    const farFromPac = (key: number) => {
-      const pos = tilePos(key);
-      return (
-        Math.hypot(pos.col - state.pac.x, pos.row - state.pac.y) >=
-        POWER_ITEM_MIN_DIST
-      );
-    };
-    const farFromItems = (key: number) => {
-      const pos = tilePos(key);
-      return activePositions.every(
-        (p) =>
-          Math.hypot(pos.col - p.col, pos.row - p.row) >= POWER_ITEM_SPACING,
-      );
-    };
-
-    // Prefer a spot that's far from both Pac-Man and every other item;
-    // relax the spacing constraint, then the Pac-Man distance, if the
-    // board is too crowded to satisfy both.
-    const spaced = candidates.filter((key) => farFromPac(key) && farFromItems(key));
-    const pacOnly = candidates.filter(farFromPac);
-    const pool = spaced.length > 0 ? spaced : pacOnly.length > 0 ? pacOnly : candidates;
-
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    state.powerItems.set(pick, type);
+    for (const key of tiles) state.powerItems.set(key, type);
   }
 }
 
@@ -206,7 +300,7 @@ function resetActors(state: GameState): void {
   state.elapsed = 0;
   state.mode = "scatter";
   state.modeLeft = SCATTER_SECS;
-  state.frightenedLeft = 0;
+  state.inDoctorContact = false;
 }
 
 /** Whether a tile can be walked onto (walls and the ghost door cannot). */
@@ -215,31 +309,47 @@ function canEnter(col: number, row: number): boolean {
   return tile !== "wall" && tile !== "door";
 }
 
-/** Eat the pellet on the tile Pac-Man just reached, if any. */
-function eatPellet(state: GameState, col: number, row: number): void {
+/** Eat the item on the tile Pac-Man just reached, if any. */
+function eatItem(state: GameState, col: number, row: number): void {
   const key = pelletKey(col, row);
-  if (!state.pellets.has(key)) return;
+  const type = state.powerItems.get(key);
+  if (type === undefined) return;
 
-  state.pellets.delete(key);
-  const isPower = state.powerItems.has(key);
-  state.score += isPower ? POWER_POINTS : PELLET_POINTS;
+  state.powerItems.delete(key);
+  state.collectedCounts[type] += 1;
+  state.score += ITEM_POINTS;
 
-  if (isPower) {
-    const type = state.powerItems.get(key)!;
-    state.collectedCounts[type] += 1;
-    state.powerItems.delete(key);
-    state.frightenedLeft = FRIGHT_SECS;
-    state.ghostChain = 0;
-    for (const ghost of state.ghosts) {
-      if (ghost.phase === "out") ghost.dir = OPPOSITE[ghost.dir];
-    }
-    // Frightening the ghosts costs health; running out ends the round.
-    state.health -= POWER_HEALTH_COST;
-    if (state.health <= 0) state.status = "lost";
-    spawnPowerItems(state);
+  // Most of the hit lands now; the rest lingers as an aftertaste (§6).
+  state.health -= HP_PER_ITEM * HP_INSTANT_FRAC;
+  if (state.health <= 0) {
+    state.health = 0;
+    state.status = "lost";
+    return;
   }
+  state.smokePools.push(RESIDUAL_HP);
 
-  if (state.pellets.size === 0) state.status = "won";
+  state.eatenInWave += 1;
+  if (state.eatenInWave >= ITEMS_PER_WAVE_CONSUMED) advanceWave(state);
+}
+
+/** Bleed the lingering HP from every still-smouldering item this frame. */
+function applySmoke(state: GameState, dt: number): void {
+  if (state.smokePools.length === 0) return;
+
+  const perPool = (RESIDUAL_HP / SMOKE_SECS) * dt;
+  let drained = 0;
+  for (let i = 0; i < state.smokePools.length; i++) {
+    const take = Math.min(state.smokePools[i], perPool);
+    state.smokePools[i] -= take;
+    drained += take;
+  }
+  state.smokePools = state.smokePools.filter((p) => p > EPS);
+
+  state.health -= drained;
+  if (state.health <= 0) {
+    state.health = 0;
+    state.status = "lost";
+  }
 }
 
 /** Advance Pac-Man by up to `budget` tiles along his current heading. */
@@ -260,7 +370,7 @@ function movePac(state: GameState, budget: number): void {
       const col = pac.x;
       const row = pac.y;
 
-      eatPellet(state, col, row);
+      eatItem(state, col, row);
       if (state.status !== "playing") {
         pac.moving = false;
         break;
@@ -299,28 +409,26 @@ function movePac(state: GameState, budget: number): void {
   if (moved) pac.anim += budget / PAC_SPEED;
 }
 
-/** Handle a ghost touching Pac-Man: eat it while frightened, otherwise heal. */
+/**
+ * A doctor touching Pac-Man heals him, so the round runs longer (§7). Fires
+ * once per contact event — staying overlapped does nothing; separating and
+ * touching again is a new catch. No invulnerability frames (§7.2).
+ */
 function resolveCollisions(state: GameState): void {
   const pac = state.pac;
-  for (const ghost of state.ghosts) {
-    if (ghost.phase !== "out") continue;
-    if (Math.hypot(ghost.x - pac.x, ghost.y - pac.y) >= CATCH_DIST) continue;
+  const touching = state.ghosts.some(
+    (g) =>
+      g.phase === "out" && Math.hypot(g.x - pac.x, g.y - pac.y) < CATCH_DIST,
+  );
 
-    if (state.frightenedLeft > 0) {
-      state.score += GHOST_SCORES[state.ghostChain];
-      state.ghostChain = Math.min(
-        state.ghostChain + 1,
-        GHOST_SCORES.length - 1,
-      );
-      ghost.phase = "eaten";
-      continue;
-    }
-
-    // Getting caught fully restores the gauge instead of costing a life;
-    // play continues in place, with no respawn reset or freeze.
-    state.health = MAX_HEALTH;
-    return;
+  if (touching && !state.inDoctorContact) {
+    state.health = Math.min(
+      MAX_HEALTH,
+      state.health + DOCTOR_RESTORE * MAX_HEALTH,
+    );
+    state.catches += 1;
   }
+  state.inDoctorContact = touching;
 }
 
 /** Advance the game by `dt` seconds. */
@@ -339,19 +447,19 @@ export function step(state: GameState, dt: number): void {
     return;
   }
 
-  if (state.frightenedLeft > 0) {
-    state.frightenedLeft = Math.max(0, state.frightenedLeft - dt);
+  applySmoke(state, dt);
+  if (state.status !== "playing") {
+    state.pac.moving = false;
+    return;
   }
 
-  // Scatter / chase phase timer (paused while ghosts are frightened).
+  // Scatter / chase phase timer.
   let modeChanged = false;
-  if (state.frightenedLeft === 0) {
-    state.modeLeft -= dt;
-    if (state.modeLeft <= 0) {
-      state.mode = state.mode === "scatter" ? "chase" : "scatter";
-      state.modeLeft += state.mode === "scatter" ? SCATTER_SECS : CHASE_SECS;
-      modeChanged = true;
-    }
+  state.modeLeft -= dt;
+  if (state.modeLeft <= 0) {
+    state.mode = state.mode === "scatter" ? "chase" : "scatter";
+    state.modeLeft += state.mode === "scatter" ? SCATTER_SECS : CHASE_SECS;
+    modeChanged = true;
   }
 
   // Turning back the way you came is always allowed, even mid-tile.
@@ -359,7 +467,7 @@ export function step(state: GameState, dt: number): void {
   if (pac.want === OPPOSITE[pac.dir]) pac.dir = pac.want;
 
   movePac(state, PAC_SPEED * dt);
-  if (state.pellets.size === 0) return;
+  if (state.status !== "playing") return;
 
   updateGhosts(
     state.ghosts,
@@ -368,7 +476,6 @@ export function step(state: GameState, dt: number): void {
       blinky: { x: state.ghosts[0].x, y: state.ghosts[0].y },
       mode: state.mode,
       modeChanged,
-      frightened: state.frightenedLeft > 0,
       elapsed: state.elapsed,
     },
     dt,

@@ -1,5 +1,5 @@
 import { VEC, type Direction } from "./dir";
-import { ROUND_SECONDS, type GameState, type Pac } from "./game";
+import { MAX_HEALTH, ROUND_SECONDS, type GameState, type Pac } from "./game";
 import type { Ghost } from "./ghosts";
 import { MAZE, MAZE_COLS, MAZE_ROWS, pelletKey, TILE } from "./maze";
 
@@ -31,12 +31,14 @@ const SIDEBAR_W = TILE * 3.7;
 export const CANVAS_W = SIDEBAR_W + MAZE_COLS * TILE;
 export const CANVAS_H = MAZE_ROWS * TILE + HEADER;
 
-/** Horizontal center of the maze viewport (excludes the sidebar). */
-const END_SCREEN_CENTER_X = SIDEBAR_W + (CANVAS_W - SIDEBAR_W) / 2;
+/**
+ * Horizontal center of the maze viewport (excludes the sidebar). The end-screen
+ * text is centered here, so the HTML "View Details" button must be too.
+ */
+export const END_SCREEN_CENTER_X = SIDEBAR_W + (CANVAS_W - SIDEBAR_W) / 2;
 /**
  * Pixel offset, from the canvas's top edge, just below "PRESS R TO RESTART" on
- * the end screen — where the HTML restart-adjacent button (e.g. a "View
- * Datavis" link) should be positioned.
+ * the end screen — where the HTML "View Details" button sits.
  */
 export const END_SCREEN_BUTTON_TOP =
   HEADER + (CANVAS_H - HEADER) / 2 + TILE * 3.3;
@@ -135,7 +137,7 @@ function drawPowerPellet(
 
 /**
  * Ghost sprite: `public/img/pacman/doctor.png`, one static portrait shared by
- * every ghost. Frightened and eaten ghosts keep their drawn look.
+ * every ghost. Eaten ghosts keep their drawn eyes.
  */
 const GHOST_SPRITE_SRC = "/img/pacman/doctor.png";
 /**
@@ -144,11 +146,7 @@ const GHOST_SPRITE_SRC = "/img/pacman/doctor.png";
  */
 const GHOST_SPRITE_TILES = 1.1;
 
-function drawGhostSprite(
-  ctx: CanvasRenderingContext2D,
-  g: Ghost,
-  invert = false,
-): boolean {
+function drawGhostSprite(ctx: CanvasRenderingContext2D, g: Ghost): boolean {
   const img = loadImage(GHOST_SPRITE_SRC);
   if (!imageReady(img)) return false;
 
@@ -156,24 +154,13 @@ function drawGhostSprite(
   const cy = g.y * TILE + TILE / 2;
   const destH = TILE * GHOST_SPRITE_TILES;
   const destW = destH * (img.naturalWidth / img.naturalHeight);
-  const dx = cx - destW / 2;
-  const dy = cy - destH / 2;
 
-  if (invert) {
-    ctx.save();
-    // `filter` is client-only and a no-op where unsupported (draws normal).
-    ctx.filter = "invert(1)";
-    ctx.drawImage(img, dx, dy, destW, destH);
-    ctx.restore();
-  } else {
-    ctx.drawImage(img, dx, dy, destW, destH);
-  }
+  ctx.drawImage(img, cx - destW / 2, cy - destH / 2, destW, destH);
   return true;
 }
 
 function drawMaze(
   ctx: CanvasRenderingContext2D,
-  pellets: Set<number>,
   powerItems: Map<number, number>,
 ) {
   for (let row = 0; row < MAZE_ROWS; row++) {
@@ -194,14 +181,10 @@ function drawMaze(
       } else if (tile === "door") {
         ctx.fillStyle = COLORS.door;
         ctx.fillRect(x, cy - 1, TILE, 2);
-      } else if (tile === "pellet" || tile === "power") {
-        // Plain pellets aren't drawn this round; only power items show.
-        const key = pelletKey(col, row);
-        if (!pellets.has(key)) continue;
-        const type = powerItems.get(key);
-        if (type !== undefined) {
-          drawPowerPellet(ctx, cx, cy, type);
-        }
+      } else {
+        // Only live power items are drawn; plain pellets are invisible.
+        const type = powerItems.get(pelletKey(col, row));
+        if (type !== undefined) drawPowerPellet(ctx, cx, cy, type);
       }
     }
   }
@@ -238,18 +221,25 @@ function getSilhouette(
 }
 
 /**
- * Player sprite: `public/img/pacman/mukesh.png`, a single static image facing
- * right. Rotated to match the current direction, with an outline-hugging glow
- * (same strength as power pellet 3) so it stands out against the maze; falls
- * back to the drawn, animated mouth when the file is missing or still loading.
+ * Player sprite. Rotated to the current direction, with an outline-hugging glow
+ * (power-pellet-3 strength) so it reads against the maze; falls back to the
+ * drawn animated mouth when the file is missing. While an eaten item is still
+ * burning down (§6 residual DoT) the "smoking" art shows; otherwise the clean
+ * one.
  */
-const PACMAN_SRC = "/img/pacman/mukesh.png";
+const PACMAN_SRC_SMOKING = "/img/pacman/mukesh.png";
+const PACMAN_SRC_CLEAN = "/img/pacman/mukesh-nonsmoke.png";
 const PACMAN_GLOW_COLOR = "#ffffff";
 /** Glow blur multiplier — matches `POWER_GLOW[2]` (power pellet 3). */
 const PACMAN_GLOW_BLUR = 0.6;
 
-function drawPacmanSprite(ctx: CanvasRenderingContext2D, pac: Pac): boolean {
-  const img = loadImage(PACMAN_SRC);
+function drawPacmanSprite(
+  ctx: CanvasRenderingContext2D,
+  pac: Pac,
+  smoking: boolean,
+): boolean {
+  const src = smoking ? PACMAN_SRC_SMOKING : PACMAN_SRC_CLEAN;
+  const img = loadImage(src);
   if (!imageReady(img)) return false;
 
   const cx = pac.x * TILE + TILE / 2;
@@ -267,7 +257,7 @@ function drawPacmanSprite(ctx: CanvasRenderingContext2D, pac: Pac): boolean {
   ctx.rotate(DIR_ANGLE[pac.dir]);
 
   // Glow cast from the sprite's silhouette so it hugs the outline.
-  const sil = getSilhouette(PACMAN_SRC, img, PACMAN_GLOW_COLOR);
+  const sil = getSilhouette(src, img, PACMAN_GLOW_COLOR);
   if (sil) {
     ctx.save();
     ctx.shadowColor = PACMAN_GLOW_COLOR;
@@ -281,8 +271,8 @@ function drawPacmanSprite(ctx: CanvasRenderingContext2D, pac: Pac): boolean {
   return true;
 }
 
-function drawPacman(ctx: CanvasRenderingContext2D, pac: Pac) {
-  if (drawPacmanSprite(ctx, pac)) return;
+function drawPacman(ctx: CanvasRenderingContext2D, pac: Pac, smoking: boolean) {
+  if (drawPacmanSprite(ctx, pac, smoking)) return;
 
   const cx = pac.x * TILE + TILE / 2;
   const cy = pac.y * TILE + TILE / 2;
@@ -358,12 +348,7 @@ function drawGhostBody(
   ctx.fill();
 }
 
-function drawGhost(
-  ctx: CanvasRenderingContext2D,
-  g: Ghost,
-  frightened: boolean,
-  flashing: boolean,
-) {
+function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost) {
   const cx = g.x * TILE + TILE / 2;
   const cy = g.y * TILE + TILE / 2;
   const r = TILE * 0.45;
@@ -374,53 +359,69 @@ function drawGhost(
     return;
   }
 
-  if (frightened && g.phase === "out") {
-    // Vulnerable: blink the doctor sprite between normal and colour-inverted,
-    // faster once the power pellet is about to wear off.
-    const period = flashing ? 90 : 160;
-    const invert = Math.floor(performance.now() / period) % 2 === 0;
-    if (drawGhostSprite(ctx, g, invert)) return;
-
-    // Fallback when the sprite is missing: the classic blue blob.
-    const body = flashing ? COLORS.frightenedFlash : COLORS.frightened;
-    drawGhostBody(ctx, cx, cy, r, body);
-    ctx.fillStyle = flashing ? "#d00000" : COLORS.eyeWhite;
-    for (const side of [-1, 1]) {
-      ctx.beginPath();
-      ctx.arc(cx + side * TILE * 0.16, cy - r * 0.1, r * 0.13, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    return;
-  }
-
-  // Prefer the walk sprite; fall back to the classic blob when it is missing.
+  // Prefer the doctor sprite; fall back to the classic blob when it is missing.
   if (drawGhostSprite(ctx, g)) return;
 
   drawGhostBody(ctx, cx, cy, r, g.color);
   drawGhostEyes(ctx, g, cx, cy, r);
 }
 
-const GAUGE_W = TILE * 5;
-const GAUGE_H = TILE * 0.8;
+/** Health is shown as LUNGS lungs, each worth MAX_HEALTH / LUNGS HP. */
+const LUNGS = 5;
+const LUNG_SRC = "/img/pacman/lang.png";
 
+function paintLung(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement | null,
+  x: number,
+  y: number,
+  size: number,
+) {
+  if (img != null && imageReady(img)) {
+    ctx.drawImage(img, x, y, size, size);
+  } else {
+    ctx.fillStyle = COLORS.pacman;
+    ctx.fillRect(x, y, size, size);
+  }
+}
+
+/**
+ * The 5 lungs form one meter that empties right to left: the healthy fraction
+ * of HP shows solid, the rest is hidden down to a faint outline. The boundary
+ * lung is sliced vertically, so even a fraction of a lung reads.
+ */
 function drawHealthGauge(
   ctx: CanvasRenderingContext2D,
   health: number,
   midY: number,
 ) {
-  const x = CANVAS_W - TILE * 0.5 - GAUGE_W;
-  const y = midY - GAUGE_H / 2;
-  const pct = Math.max(0, Math.min(100, health)) / 100;
+  const img = loadImage(LUNG_SRC);
+  const size = HEADER * 0.82;
+  const gap = TILE * 0.16;
+  const totalW = LUNGS * size + (LUNGS - 1) * gap;
+  const x0 = CANVAS_W - TILE * 0.5 - totalW;
+  const y = midY - size / 2;
+  const shownW = totalW * Math.max(0, Math.min(1, health / MAX_HEALTH));
 
-  ctx.fillStyle = COLORS.gaugeBg;
-  ctx.fillRect(x, y, GAUGE_W, GAUGE_H);
+  // Faint outline of every slot.
+  ctx.save();
+  ctx.globalAlpha = 0.14;
+  for (let i = 0; i < LUNGS; i++) {
+    paintLung(ctx, img, x0 + i * (size + gap), y, size);
+  }
+  ctx.restore();
 
-  ctx.fillStyle = pct <= 0.25 ? COLORS.danger : COLORS.pacman;
-  ctx.fillRect(x, y, GAUGE_W * pct, GAUGE_H);
-
-  ctx.strokeStyle = COLORS.gaugeBorder;
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x, y, GAUGE_W, GAUGE_H);
+  // Solid lungs, revealed from the left up to the healthy fraction.
+  if (shownW > 0) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0, y - 1, shownW, size + 2);
+    ctx.clip();
+    for (let i = 0; i < LUNGS; i++) {
+      paintLung(ctx, img, x0 + i * (size + gap), y, size);
+    }
+    ctx.restore();
+  }
 }
 
 function formatTime(seconds: number): string {
@@ -566,11 +567,9 @@ function drawOverlay(ctx: CanvasRenderingContext2D, game: GameState) {
   }
 
   const headline =
-    game.status === "won"
-      ? { text: "CLEARED!", color: COLORS.pacman }
-      : game.status === "timeout"
-        ? { text: "TIME UP!", color: COLORS.hint }
-        : { text: "You are Dead", color: COLORS.danger };
+    game.status === "timeout"
+      ? { text: "YOU SURVIVED", color: COLORS.hint }
+      : { text: "You are Dead", color: COLORS.danger };
 
   const cx = END_SCREEN_CENTER_X;
   const cy = HEADER + (CANVAS_H - HEADER) / 2;
@@ -627,18 +626,12 @@ export function drawFrame(ctx: CanvasRenderingContext2D, game: GameState) {
   drawHeader(ctx, game);
   drawSidebar(ctx, game.collectedCounts);
 
-  const frightened = game.frightenedLeft > 0;
-  const flashing =
-    frightened &&
-    game.frightenedLeft < 2 &&
-    Math.floor(game.frightenedLeft * 6) % 2 === 0;
-
   ctx.save();
   ctx.translate(SIDEBAR_W, HEADER);
-  drawMaze(ctx, game.pellets, game.powerItems);
-  drawPacman(ctx, game.pac);
+  drawMaze(ctx, game.powerItems);
+  drawPacman(ctx, game.pac, game.smokePools.length > 0);
   for (const ghost of game.ghosts) {
-    drawGhost(ctx, ghost, frightened, flashing);
+    drawGhost(ctx, ghost);
   }
   ctx.restore();
 
