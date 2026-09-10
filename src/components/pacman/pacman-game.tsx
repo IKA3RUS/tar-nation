@@ -51,7 +51,11 @@ export function PacmanGame() {
     const onKey = (e: KeyboardEvent) => {
       const game = gameRef.current;
 
-      if (game.status === "won" || game.status === "lost") {
+      if (
+        game.status === "won" ||
+        game.status === "lost" ||
+        game.status === "timeout"
+      ) {
         if (e.key === "r" || e.key === "R") {
           e.preventDefault();
           resetGame(game);

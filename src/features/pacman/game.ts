@@ -10,11 +10,14 @@ import {
 
 export type { Direction } from "./dir";
 
-export type GameStatus = "ready" | "playing" | "won" | "lost";
+export type GameStatus = "ready" | "playing" | "won" | "lost" | "timeout";
 export type GameMode = "scatter" | "chase";
 
 /** Pac-Man speed in tiles per second. */
 const PAC_SPEED = 7.5;
+
+/** Round time limit, in seconds; running out ends the round. */
+export const ROUND_SECONDS = 60;
 
 /** Points awarded per item eaten. */
 const PELLET_POINTS = 10;
@@ -274,6 +277,12 @@ export function step(state: GameState, dt: number): void {
   }
 
   state.elapsed += dt;
+  if (state.elapsed >= ROUND_SECONDS) {
+    state.status = "timeout";
+    state.pac.moving = false;
+    return;
+  }
+
   if (state.frightenedLeft > 0) {
     state.frightenedLeft = Math.max(0, state.frightenedLeft - dt);
   }

@@ -1,5 +1,5 @@
 import { VEC, type Direction } from "./dir";
-import type { GameState, Pac } from "./game";
+import { ROUND_SECONDS, type GameState, type Pac } from "./game";
 import type { Ghost } from "./ghosts";
 import { MAZE, MAZE_COLS, MAZE_ROWS, pelletKey, TILE } from "./maze";
 
@@ -312,6 +312,22 @@ function drawHealthGauge(ctx: CanvasRenderingContext2D, health: number) {
   ctx.strokeRect(x, y, GAUGE_W, GAUGE_H);
 }
 
+function formatTime(seconds: number): string {
+  const s = Math.max(0, Math.ceil(seconds));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, "0")}`;
+}
+
+function drawTimer(ctx: CanvasRenderingContext2D, elapsed: number) {
+  const remaining = ROUND_SECONDS - elapsed;
+  ctx.fillStyle = remaining <= 10 ? COLORS.danger : COLORS.text;
+  ctx.font = `${TILE}px monospace`;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+  ctx.fillText(formatTime(remaining), CANVAS_W / 2, HEADER / 2);
+}
+
 function drawHeader(ctx: CanvasRenderingContext2D, game: GameState) {
   const midY = HEADER / 2;
 
@@ -321,6 +337,7 @@ function drawHeader(ctx: CanvasRenderingContext2D, game: GameState) {
   ctx.textAlign = "left";
   ctx.fillText(`SCORE ${game.score}`, TILE / 2, midY);
 
+  drawTimer(ctx, game.elapsed);
   drawHealthGauge(ctx, game.health);
 }
 
@@ -369,12 +386,17 @@ function drawOverlay(ctx: CanvasRenderingContext2D, game: GameState) {
     return;
   }
 
-  const won = game.status === "won";
+  const headline =
+    game.status === "won"
+      ? { text: "CLEARED!", color: COLORS.pacman }
+      : game.status === "timeout"
+        ? { text: "TIME UP!", color: COLORS.hint }
+        : { text: "GAME OVER", color: COLORS.danger };
   drawCenteredLines(ctx, [
     {
-      text: won ? "CLEARED!" : "GAME OVER",
+      text: headline.text,
       size: TILE * 1.7,
-      color: won ? COLORS.pacman : COLORS.danger,
+      color: headline.color,
       gap: TILE,
     },
     { text: `SCORE ${game.score}`, size: TILE * 0.95, color: COLORS.text },

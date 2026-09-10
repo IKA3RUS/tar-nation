@@ -40,6 +40,16 @@ const FRIGHT_SPEED = 4.5;
 const EATEN_SPEED = 14;
 const EPS = 1e-6;
 
+/** Roaming/frightened speed ramps up to this multiplier over the round. */
+const MAX_SPEED_MULT = 1.5;
+/** Seconds to reach the full speed-up ramp (matches the round time limit). */
+const SPEED_RAMP_SECS = 60;
+
+/** How much faster ghosts are moving at this point in the round. */
+function speedMultiplier(elapsed: number): number {
+  return 1 + (MAX_SPEED_MULT - 1) * Math.min(elapsed / SPEED_RAMP_SECS, 1);
+}
+
 /** How close (in tiles) counts as catching Pac-Man. */
 export const CATCH_DIST = 0.5;
 
@@ -130,7 +140,9 @@ function updateGhost(g: Ghost, ctx: GhostCtx, dt: number): void {
   // phase === "out"
   if (ctx.modeChanged && !ctx.frightened) g.dir = OPPOSITE[g.dir];
 
-  const speed = ctx.frightened ? FRIGHT_SPEED : GHOST_SPEED;
+  const speed =
+    (ctx.frightened ? FRIGHT_SPEED : GHOST_SPEED) *
+    speedMultiplier(ctx.elapsed);
   let budget = speed * dt;
   let moved = false;
   let guard = 0;
