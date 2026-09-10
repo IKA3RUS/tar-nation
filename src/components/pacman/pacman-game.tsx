@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { Link } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
 
 import {
   createGame,
@@ -6,7 +7,12 @@ import {
   step,
   type Direction,
 } from "#/features/pacman/game";
-import { CANVAS_H, CANVAS_W, drawFrame } from "#/features/pacman/render";
+import {
+  CANVAS_H,
+  CANVAS_W,
+  drawFrame,
+  END_SCREEN_BUTTON_TOP,
+} from "#/features/pacman/render";
 
 const KEY_TO_DIR: Record<string, Direction> = {
   ArrowUp: "up",
@@ -26,6 +32,7 @@ const KEY_TO_DIR: Record<string, Direction> = {
 export function PacmanGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef(createGame());
+  const [ended, setEnded] = useState(false);
 
   useEffect(() => {
     const ctx = canvasRef.current?.getContext("2d");
@@ -40,6 +47,11 @@ export function PacmanGame() {
       last = now;
       step(game, dt);
       drawFrame(ctx, game);
+      setEnded(
+        game.status === "won" ||
+          game.status === "lost" ||
+          game.status === "timeout",
+      );
       raf = requestAnimationFrame(frame);
     };
 
@@ -75,11 +87,22 @@ export function PacmanGame() {
   }, []);
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={CANVAS_W}
-      height={CANVAS_H}
-      className="block"
-    />
+    <div className="relative" style={{ width: CANVAS_W, height: CANVAS_H }}>
+      <canvas
+        ref={canvasRef}
+        width={CANVAS_W}
+        height={CANVAS_H}
+        className="block"
+      />
+      {ended && (
+        <Link
+          to="/"
+          className="absolute left-1/2 -translate-x-1/2 rounded border border-white/40 bg-black/60 px-3 py-1 text-sm text-white hover:bg-white/10"
+          style={{ top: END_SCREEN_BUTTON_TOP }}
+        >
+          View Datavis
+        </Link>
+      )}
+    </div>
   );
 }

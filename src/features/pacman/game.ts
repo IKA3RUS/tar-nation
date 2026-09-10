@@ -48,6 +48,11 @@ const POWER_ITEM_TARGET = 4;
  * can't be scooped up right away and ghosts stay a real threat.
  */
 const POWER_ITEM_MIN_DIST = 10;
+/**
+ * Power items must also spawn at least this many tiles from every other
+ * active item, so they can't land on top of (or right next to) each other.
+ */
+const POWER_ITEM_SPACING = 6;
 /** Total number of power item types (A-E), independent of how many are
  * currently active (`POWER_ITEM_TARGET`). */
 const POWER_ITEM_TYPE_COUNT = 5;
@@ -149,26 +154,45 @@ export function resetGame(state: GameState): void {
  * the `POWER_ITEM_TARGET` slots keeps the same type index across respawns,
  * so a slot's letter and sprite stay stable while it moves around the maze.
  */
+function tilePos(key: number): { col: number; row: number } {
+  return { col: key % MAZE_COLS, row: Math.floor(key / MAZE_COLS) };
+}
+
 function spawnPowerItems(state: GameState): void {
   const activeTypes = new Set(state.powerItems.values());
 
   for (let type = 0; type < POWER_ITEM_TARGET; type++) {
     if (activeTypes.has(type)) continue;
 
+    // Tiles already holding a power item can never be picked again, which
+    // also rules out two items ever landing on the same tile.
     const candidates = [...state.pellets].filter(
       (key) => !state.powerItems.has(key),
     );
     if (candidates.length === 0) break;
 
-    const far = candidates.filter((key) => {
-      const col = key % MAZE_COLS;
-      const row = Math.floor(key / MAZE_COLS);
+    const activePositions = [...state.powerItems.keys()].map(tilePos);
+    const farFromPac = (key: number) => {
+      const pos = tilePos(key);
       return (
-        Math.hypot(col - state.pac.x, row - state.pac.y) >=
+        Math.hypot(pos.col - state.pac.x, pos.row - state.pac.y) >=
         POWER_ITEM_MIN_DIST
       );
-    });
-    const pool = far.length > 0 ? far : candidates;
+    };
+    const farFromItems = (key: number) => {
+      const pos = tilePos(key);
+      return activePositions.every(
+        (p) =>
+          Math.hypot(pos.col - p.col, pos.row - p.row) >= POWER_ITEM_SPACING,
+      );
+    };
+
+    // Prefer a spot that's far from both Pac-Man and every other item;
+    // relax the spacing constraint, then the Pac-Man distance, if the
+    // board is too crowded to satisfy both.
+    const spaced = candidates.filter((key) => farFromPac(key) && farFromItems(key));
+    const pacOnly = candidates.filter(farFromPac);
+    const pool = spaced.length > 0 ? spaced : pacOnly.length > 0 ? pacOnly : candidates;
 
     const pick = pool[Math.floor(Math.random() * pool.length)];
     state.powerItems.set(pick, type);

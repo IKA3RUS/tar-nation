@@ -23,10 +23,22 @@ const COLORS = {
 };
 
 /** Height of the score strip above the maze, in pixels. */
-const HEADER = TILE * 3;
+const HEADER = TILE * 2;
+/** Width of the item-count panel to the left of the maze, in pixels. */
+const SIDEBAR_W = TILE * 3.7;
 
-export const CANVAS_W = MAZE_COLS * TILE;
+export const CANVAS_W = SIDEBAR_W + MAZE_COLS * TILE;
 export const CANVAS_H = MAZE_ROWS * TILE + HEADER;
+
+/** Horizontal center of the maze viewport (excludes the sidebar). */
+const END_SCREEN_CENTER_X = SIDEBAR_W + (CANVAS_W - SIDEBAR_W) / 2;
+/**
+ * Pixel offset, from the canvas's top edge, just below "PRESS R TO
+ * RESTART" on the end screen — where the HTML restart-adjacent button
+ * (e.g. a "View Datavis" link) should be positioned.
+ */
+export const END_SCREEN_BUTTON_TOP =
+  HEADER + (CANVAS_H - HEADER) / 2 + TILE * 3.3;
 
 const DIR_ANGLE: Record<Direction, number> = {
   right: 0,
@@ -68,7 +80,8 @@ function drawPowerPellet(
 ) {
   const img = loadImage(`/img/pacman/power-pellet-${type + 1}.png`);
   if (imageReady(img)) {
-    const w = TILE * 2.4;
+    // Width matches a maze tile so tall/narrow art doesn't spill into walls.
+    const w = TILE;
     const h = w * (img.naturalHeight / img.naturalWidth);
     ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
     return;
@@ -84,8 +97,9 @@ function drawPowerPellet(
  * by every ghost. Frightened and eaten ghosts keep their drawn look.
  */
 const GHOST_SPRITE_SRC = "/img/pacman/doctor.png";
-/** On-screen height of a ghost sprite, in tiles. */
-const GHOST_SPRITE_TILES = 1.9;
+/** On-screen height of a ghost sprite, in tiles; kept near 1 tile so it fits
+ * inside single-tile-wide corridors without spilling into the walls. */
+const GHOST_SPRITE_TILES = 1.1;
 
 function drawGhostSprite(ctx: CanvasRenderingContext2D, g: Ghost): boolean {
   const img = loadImage(GHOST_SPRITE_SRC);
@@ -315,55 +329,84 @@ function drawTimer(
   ctx.fillText(formatTime(remaining), CANVAS_W / 2, midY);
 }
 
-/** One badge per item type, showing how many of that type have been eaten. */
-function drawCollectedTypes(
+/** Draws a type's icon (image if loaded, else its letter) into a box. */
+function drawItemIcon(
+  ctx: CanvasRenderingContext2D,
+  type: number,
+  letter: string,
+  x: number,
+  y: number,
+  size: number,
+  dim: boolean,
+) {
+  const img = loadImage(`/img/pacman/power-pellet-${type + 1}.png`);
+  if (imageReady(img)) {
+    const w = Math.min(size, size * (img.naturalWidth / img.naturalHeight));
+    ctx.drawImage(img, x + (size - w) / 2, y, w, size);
+    return;
+  }
+  ctx.fillStyle = dim ? COLORS.hint : COLORS.background;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(letter, x + size / 2, y + size / 2 + 1);
+}
+
+/**
+ * Item-count panel to the left of the maze: one badge per type, stacked
+ * vertically, showing that type's icon and how many have been eaten.
+ */
+function drawSidebar(
   ctx: CanvasRenderingContext2D,
   collectedCounts: number[],
-  midY: number,
 ) {
-  const size = TILE * 1.3;
-  const gap = TILE * 0.25;
+  const badgeW = SIDEBAR_W - TILE * 0.8;
+  const badgeH = TILE * 1.6;
+  const gap = TILE * 0.4;
+  const x = TILE * 0.4;
+  let y = HEADER + TILE * 0.6;
 
   ctx.font = `${TILE * 0.5}px monospace`;
-  ctx.textBaseline = "middle";
-  ctx.textAlign = "center";
 
-  POWER_ITEM_TYPES.forEach((letter, type) => {
-    const x = TILE / 2 + type * (size + gap);
+  for (const [type, letter] of POWER_ITEM_TYPES.entries()) {
     const count = collectedCounts[type];
     const got = count > 0;
 
     ctx.fillStyle = got ? COLORS.pacman : COLORS.gaugeBg;
-    ctx.fillRect(x, midY - size / 2, size, size);
+    ctx.fillRect(x, y, badgeW, badgeH);
     ctx.strokeStyle = COLORS.gaugeBorder;
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(x, midY - size / 2, size, size);
+    ctx.strokeRect(x, y, badgeW, badgeH);
+
+    const iconSize = badgeH - TILE * 0.3;
+    drawItemIcon(ctx, type, letter, x + TILE * 0.15, y + TILE * 0.15, iconSize, !got);
 
     ctx.fillStyle = got ? COLORS.background : COLORS.hint;
-    ctx.fillText(got ? `${letter}×${count}` : letter, x + size / 2, midY + 1);
-  });
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`×${count}`, x + badgeW - 4, y + badgeH / 2 + 1);
+
+    y += badgeH + gap;
+  }
 }
 
 function drawHeader(ctx: CanvasRenderingContext2D, game: GameState) {
-  const row1Y = HEADER / 4;
-  const row2Y = (HEADER * 3) / 4;
+  const midY = HEADER / 2;
 
   ctx.fillStyle = COLORS.text;
   ctx.font = `${TILE}px monospace`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
-  ctx.fillText(`SCORE ${game.score}`, TILE / 2, row1Y);
-  drawTimer(ctx, game.elapsed, row1Y);
+  ctx.fillText(`SCORE ${game.score}`, TILE / 2, midY);
 
-  drawCollectedTypes(ctx, game.collectedCounts, row2Y);
-  drawHealthGauge(ctx, game.health, row2Y);
+  drawTimer(ctx, game.elapsed, midY);
+  drawHealthGauge(ctx, game.health, midY);
 }
 
 function drawCenteredLines(
   ctx: CanvasRenderingContext2D,
   lines: { text: string; size: number; color: string; gap?: number }[],
 ) {
-  const cx = CANVAS_W / 2;
+  const cx = END_SCREEN_CENTER_X;
   let y = HEADER + (CANVAS_H - HEADER) / 2;
   const total = lines.reduce(
     (sum, l) => sum + l.size + (l.gap ?? l.size * 0.6),
@@ -393,11 +436,11 @@ function drawOverlay(ctx: CanvasRenderingContext2D, game: GameState) {
   }
 
   ctx.fillStyle = "rgba(0, 0, 0, 0.72)";
-  ctx.fillRect(0, HEADER, CANVAS_W, CANVAS_H - HEADER);
+  ctx.fillRect(SIDEBAR_W, HEADER, CANVAS_W - SIDEBAR_W, CANVAS_H - HEADER);
 
   if (game.status === "ready") {
     drawCenteredLines(ctx, [
-      { text: "PAC-MAN", size: TILE * 2.2, color: COLORS.pacman, gap: TILE },
+      { text: "Tar・Nation", size: TILE * 2.2, color: COLORS.pacman, gap: TILE },
       { text: "PRESS AN ARROW KEY", size: TILE * 0.85, color: COLORS.text },
       { text: "ARROWS / WASD TO MOVE", size: TILE * 0.7, color: COLORS.hint },
     ]);
@@ -409,22 +452,49 @@ function drawOverlay(ctx: CanvasRenderingContext2D, game: GameState) {
       ? { text: "CLEARED!", color: COLORS.pacman }
       : game.status === "timeout"
         ? { text: "TIME UP!", color: COLORS.hint }
-        : { text: "GAME OVER", color: COLORS.danger };
-  drawCenteredLines(ctx, [
-    {
-      text: headline.text,
-      size: TILE * 1.7,
-      color: headline.color,
-      gap: TILE,
-    },
-    { text: `SCORE ${game.score}`, size: TILE * 0.95, color: COLORS.text },
-    {
-      text: "PRESS R TO RESTART",
-      size: TILE * 0.8,
-      color: COLORS.hint,
-      gap: TILE,
-    },
-  ]);
+        : { text: "You are Dead", color: COLORS.danger };
+
+  const cx = END_SCREEN_CENTER_X;
+  const cy = HEADER + (CANVAS_H - HEADER) / 2;
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = headline.color;
+  ctx.font = `${TILE * 1.7}px monospace`;
+  ctx.fillText(headline.text, cx, cy - TILE * 3.4);
+
+  drawItemBreakdown(ctx, game.collectedCounts, cx, cy - TILE * 0.7);
+
+  ctx.fillStyle = COLORS.hint;
+  ctx.font = `${TILE * 0.8}px monospace`;
+  ctx.fillText("PRESS R TO RESTART", cx, cy + TILE * 2.3);
+}
+
+/** Row of item icons + how many of each were collected, shown on the end screen. */
+function drawItemBreakdown(
+  ctx: CanvasRenderingContext2D,
+  collectedCounts: number[],
+  cx: number,
+  cy: number,
+) {
+  const iconSize = TILE * 1.4;
+  const gap = TILE * 0.7;
+  const count = POWER_ITEM_TYPES.length;
+  const totalW = count * iconSize + (count - 1) * gap;
+  let x = cx - totalW / 2;
+
+  ctx.font = `${TILE * 0.55}px monospace`;
+
+  for (const [type, letter] of POWER_ITEM_TYPES.entries()) {
+    drawItemIcon(ctx, type, letter, x, cy, iconSize, false);
+
+    ctx.fillStyle = COLORS.text;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(`×${collectedCounts[type]}`, x + iconSize / 2, cy + iconSize + 4);
+
+    x += iconSize + gap;
+  }
 }
 
 /** Clear the canvas and draw the current game state. */
@@ -433,6 +503,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, game: GameState) {
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
   drawHeader(ctx, game);
+  drawSidebar(ctx, game.collectedCounts);
 
   const frightened = game.frightenedLeft > 0;
   const flashing =
@@ -441,7 +512,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, game: GameState) {
     Math.floor(game.frightenedLeft * 6) % 2 === 0;
 
   ctx.save();
-  ctx.translate(0, HEADER);
+  ctx.translate(SIDEBAR_W, HEADER);
   drawMaze(ctx, game.pellets, game.powerItems);
   drawPacman(ctx, game.pac);
   for (const ghost of game.ghosts) {
