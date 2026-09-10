@@ -28,7 +28,7 @@ const SCATTER_SECS = 7;
 const CHASE_SECS = 20;
 
 /** How long ghosts stay frightened after a power pellet, in seconds. */
-const FRIGHT_SECS = 6;
+const FRIGHT_SECS = 2;
 /** Score for each ghost eaten during one power pellet. */
 const GHOST_SCORES = [200, 400, 800, 1600];
 
@@ -43,6 +43,11 @@ const POWER_HEALTH_COST = 25;
  * so the supply never runs out. Planned to go up to 5 later.
  */
 const POWER_ITEM_TARGET = 4;
+/**
+ * Power items must spawn at least this many tiles from Pac-Man, so they
+ * can't be scooped up right away and ghosts stay a real threat.
+ */
+const POWER_ITEM_MIN_DIST = 10;
 
 /** Positions closer than this (in tiles) count as tile-aligned. */
 const EPS = 1e-6;
@@ -140,7 +145,18 @@ function spawnPowerItems(state: GameState): void {
       (key) => !state.powerItems.has(key),
     );
     if (candidates.length === 0) break;
-    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+
+    const far = candidates.filter((key) => {
+      const col = key % MAZE_COLS;
+      const row = Math.floor(key / MAZE_COLS);
+      return (
+        Math.hypot(col - state.pac.x, row - state.pac.y) >=
+        POWER_ITEM_MIN_DIST
+      );
+    });
+    const pool = far.length > 0 ? far : candidates;
+
+    const pick = pool[Math.floor(Math.random() * pool.length)];
     state.powerItems.add(pick);
   }
 }
