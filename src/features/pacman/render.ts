@@ -33,9 +33,9 @@ export const CANVAS_H = MAZE_ROWS * TILE + HEADER;
 /** Horizontal center of the maze viewport (excludes the sidebar). */
 const END_SCREEN_CENTER_X = SIDEBAR_W + (CANVAS_W - SIDEBAR_W) / 2;
 /**
- * Pixel offset, from the canvas's top edge, just below "PRESS R TO
- * RESTART" on the end screen — where the HTML restart-adjacent button
- * (e.g. a "View Datavis" link) should be positioned.
+ * Pixel offset, from the canvas's top edge, just below "PRESS R TO RESTART" on
+ * the end screen — where the HTML restart-adjacent button (e.g. a "View
+ * Datavis" link) should be positioned.
  */
 export const END_SCREEN_BUTTON_TOP =
   HEADER + (CANVAS_H - HEADER) / 2 + TILE * 3.3;
@@ -93,12 +93,14 @@ function drawPowerPellet(
 }
 
 /**
- * Ghost sprite: `public/img/pacman/doctor.png`, one static portrait shared
- * by every ghost. Frightened and eaten ghosts keep their drawn look.
+ * Ghost sprite: `public/img/pacman/doctor.png`, one static portrait shared by
+ * every ghost. Frightened and eaten ghosts keep their drawn look.
  */
 const GHOST_SPRITE_SRC = "/img/pacman/doctor.png";
-/** On-screen height of a ghost sprite, in tiles; kept near 1 tile so it fits
- * inside single-tile-wide corridors without spilling into the walls. */
+/**
+ * On-screen height of a ghost sprite, in tiles; kept near 1 tile so it fits
+ * inside single-tile-wide corridors without spilling into the walls.
+ */
 const GHOST_SPRITE_TILES = 1.1;
 
 function drawGhostSprite(ctx: CanvasRenderingContext2D, g: Ghost): boolean {
@@ -134,16 +136,12 @@ function drawMaze(
         ctx.fillStyle = COLORS.door;
         ctx.fillRect(x, cy - 1, TILE, 2);
       } else if (tile === "pellet" || tile === "power") {
+        // Plain pellets aren't drawn this round; only power items show.
         const key = pelletKey(col, row);
         if (!pellets.has(key)) continue;
         const type = powerItems.get(key);
         if (type !== undefined) {
           drawPowerPellet(ctx, cx, cy, type);
-        } else {
-          ctx.fillStyle = COLORS.pellet;
-          ctx.beginPath();
-          ctx.arc(cx, cy, TILE * 0.1, 0, Math.PI * 2);
-          ctx.fill();
         }
       }
     }
@@ -151,9 +149,9 @@ function drawMaze(
 }
 
 /**
- * Player sprite: `public/img/pacman/mukesh.png`, a single static image
- * facing right. Rotated to match the current direction; falls back to the
- * drawn, animated mouth when the file is missing or still loading.
+ * Player sprite: `public/img/pacman/mukesh.png`, a single static image facing
+ * right. Rotated to match the current direction; falls back to the drawn,
+ * animated mouth when the file is missing or still loading.
  */
 const PACMAN_SRC = "/img/pacman/mukesh.png";
 
@@ -355,10 +353,7 @@ function drawItemIcon(
  * Item-count panel to the left of the maze: one badge per type, stacked
  * vertically, showing that type's icon and how many have been eaten.
  */
-function drawSidebar(
-  ctx: CanvasRenderingContext2D,
-  collectedCounts: number[],
-) {
+function drawSidebar(ctx: CanvasRenderingContext2D, collectedCounts: number[]) {
   const badgeW = SIDEBAR_W - TILE * 0.8;
   const badgeH = TILE * 1.6;
   const gap = TILE * 0.4;
@@ -378,7 +373,15 @@ function drawSidebar(
     ctx.strokeRect(x, y, badgeW, badgeH);
 
     const iconSize = badgeH - TILE * 0.3;
-    drawItemIcon(ctx, type, letter, x + TILE * 0.15, y + TILE * 0.15, iconSize, !got);
+    drawItemIcon(
+      ctx,
+      type,
+      letter,
+      x + TILE * 0.15,
+      y + TILE * 0.15,
+      iconSize,
+      !got,
+    );
 
     ctx.fillStyle = got ? COLORS.background : COLORS.hint;
     ctx.textAlign = "right";
@@ -391,12 +394,6 @@ function drawSidebar(
 
 function drawHeader(ctx: CanvasRenderingContext2D, game: GameState) {
   const midY = HEADER / 2;
-
-  ctx.fillStyle = COLORS.text;
-  ctx.font = `${TILE}px monospace`;
-  ctx.textBaseline = "middle";
-  ctx.textAlign = "left";
-  ctx.fillText(`SCORE ${game.score}`, TILE / 2, midY);
 
   drawTimer(ctx, game.elapsed, midY);
   drawHealthGauge(ctx, game.health, midY);
@@ -440,7 +437,12 @@ function drawOverlay(ctx: CanvasRenderingContext2D, game: GameState) {
 
   if (game.status === "ready") {
     drawCenteredLines(ctx, [
-      { text: "Tar・Nation", size: TILE * 2.2, color: COLORS.pacman, gap: TILE },
+      {
+        text: "Tar・Nation",
+        size: TILE * 2.2,
+        color: COLORS.pacman,
+        gap: TILE,
+      },
       { text: "PRESS AN ARROW KEY", size: TILE * 0.85, color: COLORS.text },
       { text: "ARROWS / WASD TO MOVE", size: TILE * 0.7, color: COLORS.hint },
     ]);
@@ -491,7 +493,11 @@ function drawItemBreakdown(
     ctx.fillStyle = COLORS.text;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText(`×${collectedCounts[type]}`, x + iconSize / 2, cy + iconSize + 4);
+    ctx.fillText(
+      `×${collectedCounts[type]}`,
+      x + iconSize / 2,
+      cy + iconSize + 4,
+    );
 
     x += iconSize + gap;
   }
