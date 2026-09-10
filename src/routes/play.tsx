@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { PacmanGame } from "#/components/pacman/pacman-game";
 
-export const Route = createFileRoute("/pacman")({
+export const Route = createFileRoute("/play")({
   component: PacmanRoute,
 });
 
