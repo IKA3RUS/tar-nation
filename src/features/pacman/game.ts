@@ -29,10 +29,17 @@ const FRIGHT_SECS = 6;
 /** Score for each ghost eaten during one power pellet. */
 const GHOST_SCORES = [200, 400, 800, 1600];
 
-/** Lives the player starts with. */
-const START_LIVES = 3;
-/** Freeze after losing a life, in seconds. */
-const RESPAWN_PAUSE = 1;
+/** Health gauge runs 0-100; a ghost catch always heals back to this cap. */
+const MAX_HEALTH = 100;
+/** Percent of the health gauge a power pellet costs. */
+const POWER_HEALTH_COST = 25;
+
+/**
+ * How many power items stay active on the board at once. Items spawn on
+ * random remaining pellet tiles and are replenished as soon as one is eaten,
+ * so the supply never runs out. Planned to go up to 5 later.
+ */
+const POWER_ITEM_TARGET = 4;
 
 /** Positions closer than this (in tiles) count as tile-aligned. */
 const EPS = 1e-6;
@@ -55,9 +62,12 @@ export type GameState = {
   /** `ready` until the first key press; `won` / `lost` end the round. */
   status: GameStatus;
   score: number;
-  lives: number;
+  /** Health gauge, 0-100. */
+  health: number;
   /** Keys (see `pelletKey`) of pellets not yet eaten. */
   pellets: Set<number>;
+  /** Keys of pellet tiles currently upgraded to a power item. */
+  powerItems: Set<number>;
   pac: Pac;
   ghosts: Ghost[];
   /** Seconds since play started. */
@@ -85,11 +95,12 @@ function spawnPac(): Pac {
 }
 
 export function createGame(): GameState {
-  return {
+  const state: GameState = {
     status: "ready",
     score: 0,
-    lives: START_LIVES,
+    health: MAX_HEALTH,
     pellets: initialPellets(),
+    powerItems: new Set(),
     pac: spawnPac(),
     ghosts: createGhosts(),
     elapsed: 0,
@@ -99,17 +110,36 @@ export function createGame(): GameState {
     ghostChain: 0,
     pauseLeft: 0,
   };
+  spawnPowerItems(state);
+  return state;
 }
 
 /** Reset an existing state in place (keeps references held by the game loop). */
 export function resetGame(state: GameState): void {
   state.status = "ready";
   state.score = 0;
-  state.lives = START_LIVES;
+  state.health = MAX_HEALTH;
   state.pellets = initialPellets();
+  state.powerItems = new Set();
   state.ghostChain = 0;
   state.pauseLeft = 0;
   resetActors(state);
+  spawnPowerItems(state);
+}
+
+/**
+ * Top the active power items back up to `POWER_ITEM_TARGET` by upgrading
+ * random still-uneaten pellet tiles, so the supply never runs dry.
+ */
+function spawnPowerItems(state: GameState): void {
+  while (state.powerItems.size < POWER_ITEM_TARGET) {
+    const candidates = [...state.pellets].filter(
+      (key) => !state.powerItems.has(key),
+    );
+    if (candidates.length === 0) break;
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    state.powerItems.add(pick);
+  }
 }
 
 /** Send Pac-Man and the ghosts back to their start positions. */
@@ -134,15 +164,20 @@ function eatPellet(state: GameState, col: number, row: number): void {
   if (!state.pellets.has(key)) return;
 
   state.pellets.delete(key);
-  const isPower = tileAt(col, row) === "power";
+  const isPower = state.powerItems.has(key);
   state.score += isPower ? POWER_POINTS : PELLET_POINTS;
 
   if (isPower) {
+    state.powerItems.delete(key);
     state.frightenedLeft = FRIGHT_SECS;
     state.ghostChain = 0;
     for (const ghost of state.ghosts) {
       if (ghost.phase === "out") ghost.dir = OPPOSITE[ghost.dir];
     }
+    // Frightening the ghosts costs health; running out ends the round.
+    state.health -= POWER_HEALTH_COST;
+    if (state.health <= 0) state.status = "lost";
+    spawnPowerItems(state);
   }
 
   if (state.pellets.size === 0) state.status = "won";
@@ -167,7 +202,7 @@ function movePac(state: GameState, budget: number): void {
       const row = pac.y;
 
       eatPellet(state, col, row);
-      if (state.pellets.size === 0) {
+      if (state.status !== "playing") {
         pac.moving = false;
         break;
       }
@@ -205,7 +240,7 @@ function movePac(state: GameState, budget: number): void {
   if (moved) pac.anim += budget / PAC_SPEED;
 }
 
-/** Handle a ghost touching Pac-Man: eat it while frightened, otherwise die. */
+/** Handle a ghost touching Pac-Man: eat it while frightened, otherwise heal. */
 function resolveCollisions(state: GameState): void {
   const pac = state.pac;
   for (const ghost of state.ghosts) {
@@ -222,14 +257,9 @@ function resolveCollisions(state: GameState): void {
       continue;
     }
 
-    state.lives -= 1;
-    if (state.lives <= 0) {
-      state.status = "lost";
-      pac.moving = false;
-    } else {
-      resetActors(state);
-      state.pauseLeft = RESPAWN_PAUSE;
-    }
+    // Getting caught fully restores the gauge instead of costing a life;
+    // play continues in place, with no respawn reset or freeze.
+    state.health = MAX_HEALTH;
     return;
   }
 }

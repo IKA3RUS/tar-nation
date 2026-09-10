@@ -18,6 +18,8 @@ const COLORS = {
   frightenedFlash: "#f0f0f0",
   eyeWhite: "#ffffff",
   pupil: "#0d1b8f",
+  gaugeBg: "#333333",
+  gaugeBorder: "#ffffff",
 };
 
 /** Height of the score strip above the maze, in pixels. */
@@ -120,7 +122,11 @@ function drawGhostSprite(ctx: CanvasRenderingContext2D, g: Ghost): boolean {
   return true;
 }
 
-function drawMaze(ctx: CanvasRenderingContext2D, pellets: Set<number>) {
+function drawMaze(
+  ctx: CanvasRenderingContext2D,
+  pellets: Set<number>,
+  powerItems: Set<number>,
+) {
   for (let row = 0; row < MAZE_ROWS; row++) {
     for (let col = 0; col < MAZE_COLS; col++) {
       const tile = MAZE[row][col];
@@ -136,8 +142,9 @@ function drawMaze(ctx: CanvasRenderingContext2D, pellets: Set<number>) {
         ctx.fillStyle = COLORS.door;
         ctx.fillRect(x, cy - 1, TILE, 2);
       } else if (tile === "pellet" || tile === "power") {
-        if (!pellets.has(pelletKey(col, row))) continue;
-        if (tile === "power") {
+        const key = pelletKey(col, row);
+        if (!pellets.has(key)) continue;
+        if (powerItems.has(key)) {
           drawPowerPellet(ctx, cx, cy);
         } else {
           ctx.fillStyle = COLORS.pellet;
@@ -286,20 +293,23 @@ function drawGhost(
   drawGhostEyes(ctx, g, cx, cy, r);
 }
 
-function drawLifeIcons(ctx: CanvasRenderingContext2D, lives: number) {
-  const r = TILE * 0.36;
-  const facing = Math.PI;
-  const half = Math.PI / 5;
-  ctx.fillStyle = COLORS.pacman;
-  for (let i = 0; i < Math.max(0, lives); i++) {
-    const cx = CANVAS_W - TILE * 0.9 - i * TILE;
-    const cy = HEADER / 2;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, r, facing + half, facing - half + Math.PI * 2);
-    ctx.closePath();
-    ctx.fill();
-  }
+const GAUGE_W = TILE * 5;
+const GAUGE_H = TILE * 0.8;
+
+function drawHealthGauge(ctx: CanvasRenderingContext2D, health: number) {
+  const x = CANVAS_W - TILE * 0.5 - GAUGE_W;
+  const y = HEADER / 2 - GAUGE_H / 2;
+  const pct = Math.max(0, Math.min(100, health)) / 100;
+
+  ctx.fillStyle = COLORS.gaugeBg;
+  ctx.fillRect(x, y, GAUGE_W, GAUGE_H);
+
+  ctx.fillStyle = pct <= 0.25 ? COLORS.danger : COLORS.pacman;
+  ctx.fillRect(x, y, GAUGE_W * pct, GAUGE_H);
+
+  ctx.strokeStyle = COLORS.gaugeBorder;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, GAUGE_W, GAUGE_H);
 }
 
 function drawHeader(ctx: CanvasRenderingContext2D, game: GameState) {
@@ -311,7 +321,7 @@ function drawHeader(ctx: CanvasRenderingContext2D, game: GameState) {
   ctx.textAlign = "left";
   ctx.fillText(`SCORE ${game.score}`, TILE / 2, midY);
 
-  drawLifeIcons(ctx, game.lives);
+  drawHealthGauge(ctx, game.health);
 }
 
 function drawCenteredLines(
@@ -392,7 +402,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, game: GameState) {
 
   ctx.save();
   ctx.translate(0, HEADER);
-  drawMaze(ctx, game.pellets);
+  drawMaze(ctx, game.pellets, game.powerItems);
   drawPacman(ctx, game.pac);
   for (const ghost of game.ghosts) {
     drawGhost(ctx, ghost, frightened, flashing);
