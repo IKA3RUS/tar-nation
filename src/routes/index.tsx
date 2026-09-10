@@ -1,57 +1,18 @@
-import { useEffect, useState } from "react";
-
 import { createFileRoute, Link } from "@tanstack/react-router";
-
-import { RESULT_STORAGE_KEY, type PacmanResult } from "#/features/pacman/stats";
 
 export const Route = createFileRoute("/")({ component: Home });
 
 function Home() {
-  const [result, setResult] = useState<PacmanResult | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(RESULT_STORAGE_KEY);
-      if (raw) setResult(JSON.parse(raw) as PacmanResult);
-    } catch {
-      // ignore
-    }
-    setLoaded(true);
-  }, []);
-
-  if (!loaded) return null;
-
-  if (!result) {
-    return (
-      <div className="p-8">
-        <p className="text-lg">
-          No result yet.{" "}
-          <Link to="/play" className="underline">
-            Play a round
-          </Link>{" "}
-          and press “View Details”.
-        </p>
-      </div>
-    );
-  }
-
-  // Scaffold: the visualisation is built on top of `result` from here.
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold">
-        Nearest state: {result.nearestState}
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-black p-8 text-white">
+      <h1 className="font-mono text-4xl font-bold tracking-widest text-[#ffff00]">
+        TAR&nbsp;&middot;&nbsp;NATION
       </h1>
-      <p className="mt-2 text-lg">
-        similarity {result.similarity}% · confidence{" "}
-        {Math.round(result.confidence * 100)}% · score {result.score}% · n{" "}
-        {result.n}
-      </p>
-      <pre className="mt-6 overflow-x-auto rounded bg-black/90 p-4 text-sm text-green-300">
-        {JSON.stringify(result, null, 2)}
-      </pre>
-      <Link to="/play" className="mt-6 inline-block underline">
-        Play again
+      <Link
+        to="/play"
+        className="border-2 border-[#ffff00] bg-black px-5 py-2 font-mono text-sm font-bold tracking-widest text-[#ffff00] uppercase hover:bg-[#ffff00] hover:text-black"
+      >
+        Play
       </Link>
     </div>
   );
