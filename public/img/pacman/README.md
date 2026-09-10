@@ -8,11 +8,27 @@ is missing or still loading, so art can be dropped in or swapped any time.
 
 | File | Used for | Format |
 | --- | --- | --- |
-| `power-pellet.png` | the 4 power pellets | single image, transparent background; drawn centered on the tile, aspect ratio kept |
+| `power-pellet-1.png` … `power-pellet-5.png` | power item types A-E | single image per type, transparent background; drawn centered on the tile, aspect ratio kept |
 | `ghost-blinky.png` | Blinky's walk cycle | horizontal sprite strip — see below |
 | `ghost-pinky.png` | Pinky's walk cycle | " |
 | `ghost-inky.png` | Inky's walk cycle | " |
 | `ghost-clyde.png` | Clyde's walk cycle | " |
+
+## Power item types
+
+- `power-pellet-<n>.png` (1-5) maps to item type A-E (type index `n - 1`),
+  set in [`src/features/pacman/render.ts`](../../../src/features/pacman/render.ts)
+  (`POWER_ITEM_TYPES`).
+- How many types are actually in play at once is
+  [`src/features/pacman/game.ts`](../../../src/features/pacman/game.ts)'s
+  `POWER_ITEM_TARGET` (currently 4, planned to reach 5 — type E stays
+  uncollectable, but its badge still shows, until then).
+- Each type keeps its slot across respawns: eating a type-C item, say,
+  immediately places a new type-C item elsewhere, so its letter and sprite
+  stay consistent for the whole round.
+- All five files are currently duplicates of the original
+  `power-pellet.png` as placeholders — swap in distinct art per type
+  whenever it's ready.
 
 ## Ghost walk strip
 

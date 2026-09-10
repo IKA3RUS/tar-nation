@@ -23,7 +23,7 @@ const COLORS = {
 };
 
 /** Height of the score strip above the maze, in pixels. */
-const HEADER = TILE * 2;
+const HEADER = TILE * 3;
 
 export const CANVAS_W = MAZE_COLS * TILE;
 export const CANVAS_H = MAZE_ROWS * TILE + HEADER;
@@ -57,14 +57,16 @@ function imageReady(img: HTMLImageElement | null): img is HTMLImageElement {
   return img != null && img.complete && img.naturalWidth > 0;
 }
 
-const POWER_PELLET_SRC = "/img/pacman/power-pellet.png";
+/** Item types A-E; each has its own sprite, `power-pellet-<n>.png` (1-based). */
+export const POWER_ITEM_TYPES = ["A", "B", "C", "D", "E"];
 
 function drawPowerPellet(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
+  type: number,
 ) {
-  const img = loadImage(POWER_PELLET_SRC);
+  const img = loadImage(`/img/pacman/power-pellet-${type + 1}.png`);
   if (imageReady(img)) {
     const w = TILE * 2.4;
     const h = w * (img.naturalHeight / img.naturalWidth);
@@ -125,7 +127,7 @@ function drawGhostSprite(ctx: CanvasRenderingContext2D, g: Ghost): boolean {
 function drawMaze(
   ctx: CanvasRenderingContext2D,
   pellets: Set<number>,
-  powerItems: Set<number>,
+  powerItems: Map<number, number>,
 ) {
   for (let row = 0; row < MAZE_ROWS; row++) {
     for (let col = 0; col < MAZE_COLS; col++) {
@@ -144,8 +146,9 @@ function drawMaze(
       } else if (tile === "pellet" || tile === "power") {
         const key = pelletKey(col, row);
         if (!pellets.has(key)) continue;
-        if (powerItems.has(key)) {
-          drawPowerPellet(ctx, cx, cy);
+        const type = powerItems.get(key);
+        if (type !== undefined) {
+          drawPowerPellet(ctx, cx, cy, type);
         } else {
           ctx.fillStyle = COLORS.pellet;
           ctx.beginPath();
@@ -296,9 +299,13 @@ function drawGhost(
 const GAUGE_W = TILE * 5;
 const GAUGE_H = TILE * 0.8;
 
-function drawHealthGauge(ctx: CanvasRenderingContext2D, health: number) {
+function drawHealthGauge(
+  ctx: CanvasRenderingContext2D,
+  health: number,
+  midY: number,
+) {
   const x = CANVAS_W - TILE * 0.5 - GAUGE_W;
-  const y = HEADER / 2 - GAUGE_H / 2;
+  const y = midY - GAUGE_H / 2;
   const pct = Math.max(0, Math.min(100, health)) / 100;
 
   ctx.fillStyle = COLORS.gaugeBg;
@@ -319,26 +326,60 @@ function formatTime(seconds: number): string {
   return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
-function drawTimer(ctx: CanvasRenderingContext2D, elapsed: number) {
+function drawTimer(
+  ctx: CanvasRenderingContext2D,
+  elapsed: number,
+  midY: number,
+) {
   const remaining = ROUND_SECONDS - elapsed;
   ctx.fillStyle = remaining <= 10 ? COLORS.danger : COLORS.text;
   ctx.font = `${TILE}px monospace`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "center";
-  ctx.fillText(formatTime(remaining), CANVAS_W / 2, HEADER / 2);
+  ctx.fillText(formatTime(remaining), CANVAS_W / 2, midY);
+}
+
+/** One badge per item type; lit up once that type has been collected. */
+function drawCollectedTypes(
+  ctx: CanvasRenderingContext2D,
+  collected: Set<number>,
+  midY: number,
+) {
+  const size = TILE * 0.8;
+  const gap = TILE * 0.25;
+
+  ctx.font = `${TILE * 0.6}px monospace`;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+
+  POWER_ITEM_TYPES.forEach((letter, type) => {
+    const x = TILE / 2 + type * (size + gap);
+    const got = collected.has(type);
+
+    ctx.fillStyle = got ? COLORS.pacman : COLORS.gaugeBg;
+    ctx.fillRect(x, midY - size / 2, size, size);
+    ctx.strokeStyle = COLORS.gaugeBorder;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x, midY - size / 2, size, size);
+
+    ctx.fillStyle = got ? COLORS.background : COLORS.hint;
+    ctx.fillText(letter, x + size / 2, midY + 1);
+  });
 }
 
 function drawHeader(ctx: CanvasRenderingContext2D, game: GameState) {
-  const midY = HEADER / 2;
+  const row1Y = HEADER / 4;
+  const row2Y = (HEADER * 3) / 4;
 
   ctx.fillStyle = COLORS.text;
   ctx.font = `${TILE}px monospace`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
-  ctx.fillText(`SCORE ${game.score}`, TILE / 2, midY);
+  ctx.fillText(`SCORE ${game.score}`, TILE / 2, row1Y);
+  drawTimer(ctx, game.elapsed, row1Y);
 
-  drawTimer(ctx, game.elapsed);
-  drawHealthGauge(ctx, game.health);
+  drawCollectedTypes(ctx, game.collectedTypes, row2Y);
+  drawHealthGauge(ctx, game.health, row2Y);
 }
 
 function drawCenteredLines(

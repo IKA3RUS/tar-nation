@@ -74,8 +74,11 @@ export type GameState = {
   health: number;
   /** Keys (see `pelletKey`) of pellets not yet eaten. */
   pellets: Set<number>;
-  /** Keys of pellet tiles currently upgraded to a power item. */
-  powerItems: Set<number>;
+  /** Keys of pellet tiles currently upgraded to a power item, mapped to
+   * their type index (0-based; see `POWER_ITEM_TARGET`). */
+  powerItems: Map<number, number>;
+  /** Type indices of power items eaten at least once this round. */
+  collectedTypes: Set<number>;
   pac: Pac;
   ghosts: Ghost[];
   /** Seconds since play started. */
@@ -108,7 +111,8 @@ export function createGame(): GameState {
     score: 0,
     health: MAX_HEALTH,
     pellets: initialPellets(),
-    powerItems: new Set(),
+    powerItems: new Map(),
+    collectedTypes: new Set(),
     pac: spawnPac(),
     ghosts: createGhosts(),
     elapsed: 0,
@@ -128,7 +132,8 @@ export function resetGame(state: GameState): void {
   state.score = 0;
   state.health = MAX_HEALTH;
   state.pellets = initialPellets();
-  state.powerItems = new Set();
+  state.powerItems = new Map();
+  state.collectedTypes = new Set();
   state.ghostChain = 0;
   state.pauseLeft = 0;
   resetActors(state);
@@ -137,10 +142,16 @@ export function resetGame(state: GameState): void {
 
 /**
  * Top the active power items back up to `POWER_ITEM_TARGET` by upgrading
- * random still-uneaten pellet tiles, so the supply never runs dry.
+ * random still-uneaten pellet tiles, so the supply never runs dry. Each of
+ * the `POWER_ITEM_TARGET` slots keeps the same type index across respawns,
+ * so a slot's letter and sprite stay stable while it moves around the maze.
  */
 function spawnPowerItems(state: GameState): void {
-  while (state.powerItems.size < POWER_ITEM_TARGET) {
+  const activeTypes = new Set(state.powerItems.values());
+
+  for (let type = 0; type < POWER_ITEM_TARGET; type++) {
+    if (activeTypes.has(type)) continue;
+
     const candidates = [...state.pellets].filter(
       (key) => !state.powerItems.has(key),
     );
@@ -157,7 +168,7 @@ function spawnPowerItems(state: GameState): void {
     const pool = far.length > 0 ? far : candidates;
 
     const pick = pool[Math.floor(Math.random() * pool.length)];
-    state.powerItems.add(pick);
+    state.powerItems.set(pick, type);
   }
 }
 
@@ -187,6 +198,7 @@ function eatPellet(state: GameState, col: number, row: number): void {
   state.score += isPower ? POWER_POINTS : PELLET_POINTS;
 
   if (isPower) {
+    state.collectedTypes.add(state.powerItems.get(key)!);
     state.powerItems.delete(key);
     state.frightenedLeft = FRIGHT_SECS;
     state.ghostChain = 0;
