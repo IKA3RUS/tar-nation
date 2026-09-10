@@ -14,7 +14,7 @@
  */
 
 /** Size of one maze tile in pixels. */
-export const TILE = 20;
+export const TILE = 28;
 
 const RAW_MAZE = [
   "############################",

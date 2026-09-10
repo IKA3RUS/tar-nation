@@ -10,6 +10,7 @@ const COLORS = {
   door: "#ffb8ff",
   pellet: "#ffb897",
   power: "#ffb897",
+  powerGlow: "#ffd166",
   pacman: "#ffff00",
   text: "#ffffff",
   hint: "#8b8bff",
@@ -72,24 +73,65 @@ function imageReady(img: HTMLImageElement | null): img is HTMLImageElement {
 /** Item types A-E; each has its own sprite, `power-pellet-<n>.png` (1-based). */
 export const POWER_ITEM_TYPES = ["A", "B", "C", "D", "E"];
 
+/**
+ * Per-type glow; index = type (`power-pellet-<index+1>.png`). `blur` widens the
+ * halo (too wide = faint); `passes` stacks shadow copies to make it more
+ * intense. Pellets 1 and 2 glow hard, pellet 3 barely.
+ */
+const POWER_GLOW: { blur: number; passes: number }[] = [
+  { blur: 1.3, passes: 6 },
+  { blur: 1.3, passes: 6 },
+  { blur: 0.6, passes: 1 },
+  { blur: 0.6, passes: 1 },
+  { blur: 1, passes: 2 },
+];
+const POWER_GLOW_DEFAULT = { blur: 1, passes: 2 };
+
 function drawPowerPellet(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   type: number,
 ) {
-  const img = loadImage(`/img/pacman/power-pellet-${type + 1}.png`);
+  const src = `/img/pacman/power-pellet-${type + 1}.png`;
+  const img = loadImage(src);
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 350);
+  const glow = POWER_GLOW[type] ?? POWER_GLOW_DEFAULT;
+  const blur = TILE * (0.4 + pulse * 0.7) * glow.blur;
+  const passes = glow.passes;
+
   if (imageReady(img)) {
     // Width matches a maze tile so tall/narrow art doesn't spill into walls.
     const w = TILE;
     const h = w * (img.naturalHeight / img.naturalWidth);
-    ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+    const dx = cx - w / 2;
+    const dy = cy - h / 2;
+
+    // Glow hugs the sprite's outline: cast the shadow from a flat silhouette
+    // (uniformly opaque for every item) rather than the art itself, so the
+    // halo follows the shape; per-type strength comes only from POWER_GLOW.
+    const sil = getSilhouette(src, img, COLORS.powerGlow);
+    if (sil) {
+      ctx.save();
+      ctx.shadowColor = COLORS.powerGlow;
+      ctx.shadowBlur = blur;
+      for (let i = 0; i < passes; i++) ctx.drawImage(sil, dx, dy, w, h);
+      ctx.restore();
+    }
+
+    ctx.drawImage(img, dx, dy, w, h);
     return;
   }
+
+  ctx.save();
+  ctx.shadowColor = COLORS.powerGlow;
+  ctx.shadowBlur = blur;
   ctx.fillStyle = COLORS.power;
   ctx.beginPath();
   ctx.arc(cx, cy, TILE * 0.3, 0, Math.PI * 2);
   ctx.fill();
+  for (let i = 1; i < passes; i++) ctx.fill();
+  ctx.restore();
 }
 
 /**
@@ -130,8 +172,12 @@ function drawMaze(
       const cy = y + TILE / 2;
 
       if (tile === "wall") {
+        // Extend 1px into wall neighbours to the right / below so fractional
+        // scaling (browser zoom, HiDPI) can't leave seams between tiles.
+        const right = MAZE[row]?.[col + 1] === "wall" ? 1 : 0;
+        const down = MAZE[row + 1]?.[col] === "wall" ? 1 : 0;
         ctx.fillStyle = COLORS.wall;
-        ctx.fillRect(x, y, TILE, TILE);
+        ctx.fillRect(x, y, TILE + right, TILE + down);
       } else if (tile === "door") {
         ctx.fillStyle = COLORS.door;
         ctx.fillRect(x, cy - 1, TILE, 2);
@@ -149,11 +195,45 @@ function drawMaze(
 }
 
 /**
+ * A solid-colour silhouette of a decoded sprite, built once on an offscreen
+ * canvas and cached by `src|colour`. Used to stamp a crisp outline.
+ */
+const silhouetteCache = new Map<string, HTMLCanvasElement>();
+
+function getSilhouette(
+  src: string,
+  img: HTMLImageElement,
+  color: string,
+): HTMLCanvasElement | null {
+  if (typeof document === "undefined") return null;
+  const key = `${src}|${color}`;
+  const cached = silhouetteCache.get(key);
+  if (cached) return cached;
+
+  const c = document.createElement("canvas");
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
+  const g = c.getContext("2d");
+  if (!g) return null;
+  g.drawImage(img, 0, 0);
+  g.globalCompositeOperation = "source-in";
+  g.fillStyle = color;
+  g.fillRect(0, 0, c.width, c.height);
+
+  silhouetteCache.set(key, c);
+  return c;
+}
+
+/**
  * Player sprite: `public/img/pacman/mukesh.png`, a single static image facing
- * right. Rotated to match the current direction; falls back to the drawn,
- * animated mouth when the file is missing or still loading.
+ * right. Rotated to match the current direction, with an outline-hugging glow
+ * (same strength as power pellet 3) so it stands out against the maze; falls
+ * back to the drawn, animated mouth when the file is missing or still loading.
  */
 const PACMAN_SRC = "/img/pacman/mukesh.png";
+const PACMAN_GLOW_COLOR = "#ffffff";
+/** Glow blur multiplier — matches `POWER_GLOW[2]` (power pellet 3). */
+const PACMAN_GLOW_BLUR = 0.6;
 
 function drawPacmanSprite(ctx: CanvasRenderingContext2D, pac: Pac): boolean {
   const img = loadImage(PACMAN_SRC);
@@ -163,11 +243,27 @@ function drawPacmanSprite(ctx: CanvasRenderingContext2D, pac: Pac): boolean {
   const cy = pac.y * TILE + TILE / 2;
   const w = TILE * 1.1;
   const h = w * (img.naturalHeight / img.naturalWidth);
+  const dx = -w / 2;
+  const dy = -h / 2;
+
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 350);
+  const blur = TILE * (0.4 + pulse * 0.7) * PACMAN_GLOW_BLUR;
 
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(DIR_ANGLE[pac.dir]);
-  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+
+  // Glow cast from the sprite's silhouette so it hugs the outline.
+  const sil = getSilhouette(PACMAN_SRC, img, PACMAN_GLOW_COLOR);
+  if (sil) {
+    ctx.save();
+    ctx.shadowColor = PACMAN_GLOW_COLOR;
+    ctx.shadowBlur = blur;
+    ctx.drawImage(sil, dx, dy, w, h);
+    ctx.restore();
+  }
+
+  ctx.drawImage(img, dx, dy, w, h);
   ctx.restore();
   return true;
 }
