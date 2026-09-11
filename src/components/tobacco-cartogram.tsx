@@ -352,10 +352,27 @@ function ChevronLeftPixel() {
   );
 }
 
-export function TobaccoCartogram() {
+export function TobaccoCartogram({
+  headline = null,
+  focusState = null,
+}: {
+  /**
+   * Already-phrased match line from the game result, if the reader arrived with
+   * one.
+   */
+  headline?: string | null;
+  /** State name to open the map on, from the same result. */
+  focusState?: string | null;
+} = {}) {
   const [shape, setShape] = useState<Shape>("map");
   const [metric, setMetric] = useState<Metric>("people");
   const [active, setActive] = useState<string | null>(null);
+  const pinned = focusState
+    ? (STATES.find((d) => d.name === focusState)?.code ?? null)
+    : null;
+  // Hovering takes over, and releasing returns the map to the matched state
+  // rather than to nothing.
+  const focus = active ?? pinned;
   const [morph, setMorph] = useState<{ from: Piece[]; t: number } | null>(null);
   const drawn = useRef<Piece[] | null>(null);
   const plot = useRef<HTMLDivElement>(null);
@@ -409,8 +426,8 @@ export function TobaccoCartogram() {
   const rank = spec.ranks ?? METRICS.people.ranks!;
   const ranked = [...STATES].sort((a, b) => rank(b) - rank(a));
   const board = spec.ranks ? spec : METRICS.people;
-  const hovered = active ? STATES.find((d) => d.code === active) : null;
-  const tip = hovered ? target[STATES.indexOf(hovered)] : null;
+  const shown = focus ? STATES.find((d) => d.code === focus) : null;
+  const tip = shown ? target[STATES.indexOf(shown)] : null;
 
   const place = (piece: Piece, i: number, incoming: boolean) => {
     const other = incoming ? source?.[i].frame : target[i].frame;
@@ -452,8 +469,7 @@ export function TobaccoCartogram() {
       {paintOrder(pieces).map(([piece, i]) => {
         const d = STATES[i];
         const { transform } = place(piece, i, incoming);
-        const fill =
-          active !== null && active !== piece.code ? FILL_MUTED : FILL;
+        const fill = focus !== null && focus !== piece.code ? FILL_MUTED : FILL;
         return (
           <g
             key={piece.code}
@@ -539,6 +555,13 @@ export function TobaccoCartogram() {
           </span>
         </p>
 
+        {headline && (
+          <div className={`flex flex-col gap-0.5 p-3 ${PANEL}`}>
+            <span className="text-lg text-stone-500">your round</span>
+            <span className="text-2xl text-stone-50">{headline}</span>
+          </div>
+        )}
+
         <Fieldset className="gap-1.5">
           <FieldsetLegend className="text-lg text-stone-500">
             shape
@@ -599,10 +622,10 @@ export function TobaccoCartogram() {
                   className={
                     i === 0
                       ? `flex w-full flex-wrap items-baseline gap-x-2 px-2 py-1.5 text-left outline-none ${PANEL} ${
-                          active === d.code ? "bg-stone-800" : ""
+                          focus === d.code ? "bg-stone-800" : ""
                         }`
                       : `grid w-full grid-cols-[auto_1fr_auto] items-center gap-2 border-b-2 border-stone-800 py-1.5 text-left text-lg outline-none ${
-                          active === d.code ? "bg-stone-900 text-stone-50" : ""
+                          focus === d.code ? "bg-stone-900 text-stone-50" : ""
                         }`
                   }
                   onMouseEnter={() => setActive(d.code)}
@@ -674,7 +697,7 @@ export function TobaccoCartogram() {
             {labels(target, true)}
           </svg>
 
-          {hovered && tip && fit.s > 0 && (
+          {shown && tip && fit.s > 0 && (
             <div
               className={`pointer-events-none absolute z-10 flex w-44 -translate-x-1/2 -translate-y-full flex-col gap-0.5 p-2 ${PANEL}`}
               style={{
@@ -688,8 +711,8 @@ export function TobaccoCartogram() {
                 top: fit.oy + tip.frame.y * fit.s - 10,
               }}
             >
-              <span className="text-lg text-stone-50">{hovered.name}</span>
-              <span className="text-2xl text-tar-red">{spec.big(hovered)}</span>
+              <span className="text-lg text-stone-50">{shown.name}</span>
+              <span className="text-2xl text-tar-red">{spec.big(shown)}</span>
               <span className="text-base text-stone-400">{spec.say}</span>
             </div>
           )}

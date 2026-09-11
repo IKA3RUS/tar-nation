@@ -29,11 +29,16 @@ function Home() {
             </header>
 
             <nav className="flex flex-col gap-6">
-              <Button className="h-26 rounded-none bg-tar-red text-2xl text-white shadow-[8px_8px_0_#000] transition-all duration-100 ease-[steps(2,jump-end)] hover:translate-x-1 hover:translate-y-1 hover:bg-tar-red-dark hover:shadow-[4px_4px_0_#000] active:translate-x-2 active:translate-y-2 active:shadow-none">
+              <Button
+                render={<Link to="/play" />}
+                nativeButton={false}
+                className="h-26 rounded-none bg-tar-red text-2xl text-white shadow-[8px_8px_0_#000] transition-all duration-100 ease-[steps(2,jump-end)] hover:translate-x-1 hover:translate-y-1 hover:bg-tar-red-dark hover:shadow-[4px_4px_0_#000] active:translate-x-2 active:translate-y-2 active:shadow-none"
+              >
                 play
               </Button>
               <Button
                 render={<Link to="/map" />}
+                nativeButton={false}
                 className="h-26 rounded-none bg-stone-900 text-2xl text-tar-red shadow-[8px_8px_0_#000] transition-all duration-100 ease-[steps(2,jump-end)] hover:translate-x-1 hover:translate-y-1 hover:bg-stone-800 hover:shadow-[4px_4px_0_#000] active:translate-x-2 active:translate-y-2 active:shadow-none"
               >
                 just show me the map
