@@ -2,15 +2,17 @@
 
 ## Files
 
-| File                     | What it is                                                                                                                                        |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `state-composition.json` | Reference table `M` — 33 Indian states, each `{ state, cigarette, bidi, gutka_zarda, leaf_tobacco }` (a % composition, ~100). Read by `stats.ts`. |
-| `result.example.json`    | A sample of the JSON that `/map` receives. Use it as a fixture while building the visualisation (no need to play a round).                        |
+| File                  | What it is                                                                                                                 |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `result.example.json` | A sample of the JSON that `/map` receives. Use it as a fixture while building the visualisation (no need to play a round). |
 
-The reference table is a plain JSON import, so it works in dev and in
-production and needs no parsing step. Rows are normalised to 100 before any
+Reference table `M` now lives at [`src/data/state-composition.json`](../../../data/state-composition.json)
+— 33 Indian states, each `{ state, cigarette, bidi, gutka_zarda, leaf_tobacco }`
+(a % composition, ~100) — because `/map` shows the same breakdown on hover. It
+is a plain JSON import, so it works in dev and in production with no parsing
+step. Rows are normalised to 100 before any
 distance is taken, so a row that sums to less (Haryana is 88.4) still compares
-correctly. To add / correct states, edit the JSON — nothing else.
+correctly. To add / correct states, edit that JSON — nothing else.
 
 ## How the game result reaches `/map`
 

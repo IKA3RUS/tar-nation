@@ -1,4 +1,4 @@
-import stateComposition from "./data/state-composition.json";
+import stateComposition from "#/data/state-composition.json";
 
 /**
  * Canonical product order (spec §0). The consumption vector always uses this
