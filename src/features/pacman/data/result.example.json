@@ -1,0 +1,25 @@
+{
+  "_note": "Example of the JSON /map receives (localStorage key 'tar-nation:result'). Shape is produced by computeResult() in ../stats.ts. Use as a fixture while building the visualisation.",
+  "counts": { "cigarette": 5, "bidi": 3, "gutka_zarda": 1, "leaf_tobacco": 2 },
+  "n": 11,
+  "catches": 2,
+  "proportions": {
+    "cigarette": 45.5,
+    "bidi": 27.3,
+    "gutka_zarda": 9.1,
+    "leaf_tobacco": 18.2
+  },
+  "top3": [
+    { "name": "West Bengal", "distance": 26.4, "score": 26.4 },
+    { "name": "Meghalaya", "distance": 40.2, "score": 40.2 },
+    { "name": "Tripura", "distance": 45, "score": 45 }
+  ],
+  "distances": {
+    "West Bengal": 26.4,
+    "Meghalaya": 40.2,
+    "Tripura": 45,
+    "Assam": 81.8
+  },
+  "confident": true,
+  "timestamp": "2026-09-10T15:07:15.819Z"
+}

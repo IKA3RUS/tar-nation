@@ -1,0 +1,233 @@
+[
+  {
+    "state": "Andaman & Nicobar",
+    "cigarette": 18.98,
+    "bidi": 1.75,
+    "gutka_zarda": 70.95,
+    "leaf_tobacco": 8.32
+  },
+  {
+    "state": "Andhra Pradesh",
+    "cigarette": 72.59,
+    "bidi": 19.63,
+    "gutka_zarda": 3.51,
+    "leaf_tobacco": 4.17
+  },
+  {
+    "state": "Arunachal Pradesh",
+    "cigarette": 50,
+    "bidi": 8.14,
+    "gutka_zarda": 36.52,
+    "leaf_tobacco": 5.33
+  },
+  {
+    "state": "Assam",
+    "cigarette": 29.02,
+    "bidi": 7.79,
+    "gutka_zarda": 49.96,
+    "leaf_tobacco": 13.21
+  },
+  {
+    "state": "Bihar",
+    "cigarette": 12.31,
+    "bidi": 0.98,
+    "gutka_zarda": 55.13,
+    "leaf_tobacco": 31.46
+  },
+  {
+    "state": "Chandigarh",
+    "cigarette": 92.29,
+    "bidi": 5.6,
+    "gutka_zarda": 2.01,
+    "leaf_tobacco": 0
+  },
+  {
+    "state": "Chhattisgarh",
+    "cigarette": 19.46,
+    "bidi": 8.66,
+    "gutka_zarda": 64.32,
+    "leaf_tobacco": 7.54
+  },
+  {
+    "state": "Daman & Diu",
+    "cigarette": 8.59,
+    "bidi": 3.73,
+    "gutka_zarda": 71.63,
+    "leaf_tobacco": 16.03
+  },
+  {
+    "state": "Delhi",
+    "cigarette": 62.38,
+    "bidi": 13.73,
+    "gutka_zarda": 22.02,
+    "leaf_tobacco": 1.19
+  },
+  {
+    "state": "Haryana",
+    "cigarette": 27.1,
+    "bidi": 52.44,
+    "gutka_zarda": 8.44,
+    "leaf_tobacco": 0.42
+  },
+  {
+    "state": "Himachal Pradesh",
+    "cigarette": 21.27,
+    "bidi": 67.74,
+    "gutka_zarda": 7.27,
+    "leaf_tobacco": 3.72
+  },
+  {
+    "state": "Jammu & Kashmir",
+    "cigarette": 77.32,
+    "bidi": 14.82,
+    "gutka_zarda": 1.72,
+    "leaf_tobacco": 0.42
+  },
+  {
+    "state": "Jharkhand",
+    "cigarette": 20.47,
+    "bidi": 3.13,
+    "gutka_zarda": 39.05,
+    "leaf_tobacco": 37.32
+  },
+  {
+    "state": "Karnataka",
+    "cigarette": 46.51,
+    "bidi": 14.28,
+    "gutka_zarda": 34.41,
+    "leaf_tobacco": 4.57
+  },
+  {
+    "state": "Kerala",
+    "cigarette": 83.18,
+    "bidi": 16.46,
+    "gutka_zarda": 0.11,
+    "leaf_tobacco": 0.25
+  },
+  {
+    "state": "Ladakh",
+    "cigarette": 89.96,
+    "bidi": 8,
+    "gutka_zarda": 1.01,
+    "leaf_tobacco": 0.06
+  },
+  {
+    "state": "Lakshadweep",
+    "cigarette": 77.22,
+    "bidi": 13.81,
+    "gutka_zarda": 0.37,
+    "leaf_tobacco": 7.77
+  },
+  {
+    "state": "Madhya Pradesh",
+    "cigarette": 11.24,
+    "bidi": 14.96,
+    "gutka_zarda": 68.77,
+    "leaf_tobacco": 4.98
+  },
+  {
+    "state": "Maharashtra",
+    "cigarette": 12.64,
+    "bidi": 5.19,
+    "gutka_zarda": 55.69,
+    "leaf_tobacco": 25.7
+  },
+  {
+    "state": "Meghalaya",
+    "cigarette": 57.07,
+    "bidi": 31.74,
+    "gutka_zarda": 1.9,
+    "leaf_tobacco": 4.96
+  },
+  {
+    "state": "Mizoram",
+    "cigarette": 93.81,
+    "bidi": 0.82,
+    "gutka_zarda": 1.93,
+    "leaf_tobacco": 3.43
+  },
+  {
+    "state": "Nagaland",
+    "cigarette": 15.87,
+    "bidi": 16.49,
+    "gutka_zarda": 61.25,
+    "leaf_tobacco": 6.34
+  },
+  {
+    "state": "Odisha",
+    "cigarette": 9.97,
+    "bidi": 3.56,
+    "gutka_zarda": 71.04,
+    "leaf_tobacco": 15.37
+  },
+  {
+    "state": "Puducherry",
+    "cigarette": 95.04,
+    "bidi": 4.96,
+    "gutka_zarda": 0,
+    "leaf_tobacco": 0
+  },
+  {
+    "state": "Punjab",
+    "cigarette": 30.61,
+    "bidi": 30.63,
+    "gutka_zarda": 33.87,
+    "leaf_tobacco": 4.64
+  },
+  {
+    "state": "Rajasthan",
+    "cigarette": 5.57,
+    "bidi": 45.43,
+    "gutka_zarda": 43.82,
+    "leaf_tobacco": 3.08
+  },
+  {
+    "state": "Sikkim",
+    "cigarette": 73.32,
+    "bidi": 2.18,
+    "gutka_zarda": 23.84,
+    "leaf_tobacco": 0.66
+  },
+  {
+    "state": "Tamil Nadu",
+    "cigarette": 75.62,
+    "bidi": 16.5,
+    "gutka_zarda": 2.12,
+    "leaf_tobacco": 5.55
+  },
+  {
+    "state": "Telangana",
+    "cigarette": 79.37,
+    "bidi": 9.03,
+    "gutka_zarda": 9.85,
+    "leaf_tobacco": 1.75
+  },
+  {
+    "state": "Tripura",
+    "cigarette": 35.08,
+    "bidi": 25.79,
+    "gutka_zarda": 30.66,
+    "leaf_tobacco": 5.54
+  },
+  {
+    "state": "Uttar Pradesh",
+    "cigarette": 15.17,
+    "bidi": 20.57,
+    "gutka_zarda": 54.01,
+    "leaf_tobacco": 9.64
+  },
+  {
+    "state": "Uttarakhand",
+    "cigarette": 31.44,
+    "bidi": 36.64,
+    "gutka_zarda": 30.19,
+    "leaf_tobacco": 1.07
+  },
+  {
+    "state": "West Bengal",
+    "cigarette": 44.26,
+    "bidi": 33.01,
+    "gutka_zarda": 16.5,
+    "leaf_tobacco": 6.17
+  }
+]
