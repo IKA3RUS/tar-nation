@@ -1,8 +1,8 @@
-import statesCsv from "./data/state_composition_cost_game.csv?raw";
+import stateComposition from "./data/state-composition.json";
 
 /**
  * Canonical product order (spec §0). The consumption vector always uses this
- * order; it matches the columns of the reference CSV.
+ * order; it matches the keys of the reference table.
  */
 export const BINS = [
   "cigarette",
@@ -69,28 +69,12 @@ export type PacmanResult = {
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
 
-/** Parse the reference CSV (plain, unquoted fields) into state rows. */
-function parseStates(raw: string): StateRow[] {
-  const lines = raw
-    .trim()
-    .split(/\r?\n/)
-    .filter((line) => line.trim().length > 0);
-  const header = lines[0].split(",").map((h) => h.trim());
-  const nameCol = header.indexOf("state");
-  const productCols = BINS.map((p) => header.indexOf(p));
-
-  return lines.slice(1).map((line) => {
-    const cells = line.split(",");
-    const row = { name: cells[nameCol]?.trim() ?? "" } as StateRow;
-    BINS.forEach((p, i) => {
-      row[p] = Number(cells[productCols[i]]) || 0;
-    });
-    return row;
-  });
-}
-
 /** Reference table `M` — 33 states (spec §9). */
-const STATES: readonly StateRow[] = parseStates(statesCsv);
+const STATES: readonly StateRow[] = stateComposition.map((row) => {
+  const state = { name: row.state } as StateRow;
+  for (const p of BINS) state[p] = row[p];
+  return state;
+});
 
 /** Normalise any non-negative row to percentages summing to 100 (spec §9). */
 function toProportions(row: ProductMap): ProductMap {

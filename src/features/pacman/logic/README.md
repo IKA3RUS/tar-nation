@@ -6,18 +6,18 @@ the few places the implementation genuinely departs from it.
 
 ## Where each section lives in code
 
-| Spec | Code |
-| --- | --- |
-| §2 constants | top of [`../game.ts`](../game.ts) |
-| §3 Dirichlet mix | `dirichlet` / `randGamma` / `randNormal` in `../game.ts` |
-| §4.2 wave composition | `waveComposition` in `../game.ts` |
-| §4.3 placement | `buildRegions` / `pickInRegion` / `advanceWave` in `../game.ts` |
-| §5 wave advancement | `eatItem` in `../game.ts` |
-| §6 health / depletion | `applySmoke` / `eatItem` in `../game.ts`; `drawHealthGauge` in [`../render.ts`](../render.ts) |
-| §7 doctor | `../ghosts.ts` (`DOCTOR_COUNT`, `GHOST_SPEED`, `chooseDir`); `resolveCollisions` in `../game.ts` |
-| §8 timer / end | `ROUND_SECONDS` + `step` in `../game.ts`; `drawOverlay` in `../render.ts` |
-| §9 match | `computeResult` in [`../stats.ts`](../stats.ts); consumed at [`src/routes/map.tsx`](../../../routes/map.tsx) |
-| reference data | [`../data/`](../data/) (`state_composition_cost_game.csv`, `result.example.json`) |
+| Spec                  | Code                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------ |
+| §2 constants          | top of [`../game.ts`](../game.ts)                                                                            |
+| §3 Dirichlet mix      | `dirichlet` / `randGamma` / `randNormal` in `../game.ts`                                                     |
+| §4.2 wave composition | `waveComposition` in `../game.ts`                                                                            |
+| §4.3 placement        | `buildRegions` / `pickInRegion` / `advanceWave` in `../game.ts`                                              |
+| §5 wave advancement   | `eatItem` in `../game.ts`                                                                                    |
+| §6 health / depletion | `applySmoke` / `eatItem` in `../game.ts`; `drawHealthGauge` in [`../render.ts`](../render.ts)                |
+| §7 doctor             | `../ghosts.ts` (`DOCTOR_COUNT`, `GHOST_SPEED`, `chooseDir`); `resolveCollisions` in `../game.ts`             |
+| §8 timer / end        | `ROUND_SECONDS` + `step` in `../game.ts`; `drawOverlay` in `../render.ts`                                    |
+| §9 match              | `computeResult` in [`../stats.ts`](../stats.ts); consumed at [`src/routes/map.tsx`](../../../routes/map.tsx) |
+| reference data        | [`../data/`](../data/) (`state-composition.json`, `result.example.json`)                                     |
 
 ## Genuine deviations from the spec
 
@@ -46,7 +46,7 @@ items only land on corridor tiles, so every item is always reachable.
 
 No `state_match.py` / `load_divisors` / `state_units_game.csv` were supplied, so
 `computeResult` uses **plain L1** on the normalised percentages; `score` equals
-`distance`. Reference `M` is `../data/state_composition_cost_game.csv` (33 rows,
+`distance`. Reference `M` is `../data/state-composition.json` (33 rows,
 each already a ~100 composition). Consequence: central-simplex states (e.g.
 Punjab) win a disproportionate share of near-balanced vectors. Fix is the §12-5
 recalibration — feed real runs to `calibrate()` and rebuild the divisors once
