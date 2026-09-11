@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-import { Link } from "@tanstack/react-router";
-
+import { BackButton } from "#/components/back-button";
 import { TwinkleBackdrop } from "#/components/twinkle-backdrop";
-import { Button } from "#/components/ui/button";
 import { Fieldset, FieldsetLegend } from "#/components/ui/fieldset";
 import { ToggleGroup, ToggleGroupItem } from "#/components/ui/toggle-group";
 import {
@@ -15,6 +13,7 @@ import {
   PIXEL_VOID,
   RATE_ROWS,
 } from "#/data/india-pixels";
+import stateComposition from "#/data/state-composition.json";
 import { TOBACCO_BY_STATE, type StateTobacco } from "#/data/tobacco";
 
 /* ---- numbers ------------------------------------------------------------ */
@@ -32,6 +31,40 @@ function fmtPeople(millions: number) {
   if (people >= LAKH) return `${(people / LAKH).toFixed(1)} lakh`;
   return Math.round(people).toLocaleString("en-IN");
 }
+
+/* ---- what each state actually consumes ----------------------------------- */
+
+/** Column order and how each reads in the popover. */
+const PRODUCTS = [
+  ["cigarette", "cigarette"],
+  ["bidi", "bidi"],
+  ["gutka_zarda", "gutka / zarda"],
+  ["leaf_tobacco", "leaf"],
+] as const;
+
+type Composition = { label: string; share: number }[];
+
+/**
+ * Share of a state's tobacco use by product, keyed by state name. Rows are
+ * normalised to 100 the same way `stats.ts` does before matching — several sum
+ * to less than that (Haryana is 88.4), and four shares that do not add up would
+ * read as an error in the popover.
+ */
+const COMPOSITION = new Map<string, Composition>(
+  stateComposition.map((row) => {
+    const total = PRODUCTS.reduce(
+      (sum, [key]) => sum + Math.max(0, row[key]),
+      0,
+    );
+    return [
+      row.state,
+      PRODUCTS.map(([key, label]) => ({
+        label,
+        share: total > 0 ? (Math.max(0, row[key]) / total) * 100 : 0,
+      })),
+    ];
+  }),
+);
 
 /* ---- the two axes: what is drawn, and what sizes it ---------------------- */
 
@@ -336,19 +369,49 @@ const EDGE = "#5e0000";
 const TOGGLE =
   "rounded-none bg-stone-900 text-stone-300 shadow-[6px_6px_0_#000] transition-all duration-100 ease-[steps(2,jump-end)] hover:translate-x-1 hover:translate-y-1 hover:bg-stone-800 hover:text-stone-50 hover:shadow-[3px_3px_0_#000] aria-pressed:bg-tar-red aria-pressed:text-white";
 
-/** A chevron drawn the way everything else here is: on an 8x8 pixel grid. */
-function ChevronLeftPixel() {
+/** Half the popover's width, for keeping it inside the plot. */
+const TIP_HALF = 112;
+/**
+ * Roughly its height with the breakdown in it — enough to know when it would
+ * run off the top and should sit under the state instead.
+ */
+const TIP_TALL = 170;
+
+/**
+ * What the state smokes and chews, as four bars. Every bar is the same red —
+ * the length is the number, exactly as on the map itself.
+ */
+function Breakdown({ name }: { name: string }) {
+  const mix = COMPOSITION.get(name);
+  if (!mix) {
+    // 29 of the 32 states carry a breakdown; Goa, Gujarat and Manipur are not
+    // in the reference table, and saying so beats an empty gap.
+    return (
+      <span className="mt-1 border-t-2 border-stone-800 pt-1 text-base text-stone-600">
+        no product breakdown
+      </span>
+    );
+  }
   return (
-    <svg
-      viewBox="0 0 8 8"
-      fill="currentColor"
-      shapeRendering="crispEdges"
-      className="size-3"
-    >
-      {[5, 4, 3, 2, 2, 3, 4, 5].map((x, y) => (
-        <rect key={y} x={x} y={y} width="2" height="1" />
+    <div className="mt-1 flex flex-col gap-0.5 border-t-2 border-stone-800 pt-1">
+      {mix.map((p) => (
+        <div
+          key={p.label}
+          className="grid grid-cols-[4.5rem_1fr_2rem] items-center gap-1.5 text-base"
+        >
+          <span className="truncate text-stone-400">{p.label}</span>
+          <span className="h-2 bg-stone-800">
+            <span
+              className="block h-full bg-tar-red"
+              style={{ width: `${p.share}%` }}
+            />
+          </span>
+          <span className="text-right text-stone-300">
+            {p.share.toFixed(0)}%
+          </span>
+        </div>
       ))}
-    </svg>
+    </div>
   );
 }
 
@@ -536,14 +599,7 @@ export function TobaccoCartogram({
 
       <aside className="relative z-10 flex shrink-0 flex-col gap-3 px-5 pt-2 pb-4 lg:h-screen lg:w-[25rem] lg:px-8 lg:py-6">
         <div className="flex">
-          <Button
-            render={<Link to="/" />}
-            nativeButton={false}
-            className="h-9 gap-2 rounded-none bg-stone-900 px-3 text-lg text-stone-300 shadow-[4px_4px_0_#000] transition-all duration-100 ease-[steps(2,jump-end)] hover:translate-x-1 hover:translate-y-1 hover:bg-tar-red-dark hover:text-white hover:shadow-[2px_2px_0_#000] active:translate-x-1 active:translate-y-1 active:shadow-none"
-          >
-            <ChevronLeftPixel />
-            tar nation
-          </Button>
+          <BackButton />
         </div>
 
         <p className="flex flex-wrap items-baseline gap-x-3">
@@ -699,21 +755,31 @@ export function TobaccoCartogram({
 
           {shown && tip && fit.s > 0 && (
             <div
-              className={`pointer-events-none absolute z-10 flex w-44 -translate-x-1/2 -translate-y-full flex-col gap-0.5 p-2 ${PANEL}`}
+              className={`pointer-events-none absolute z-10 flex w-56 -translate-x-1/2 flex-col gap-0.5 p-2 ${
+                // Northern states sit too close to the top edge for the
+                // popover to open upwards, so it drops below them instead.
+                fit.oy + tip.frame.y * fit.s < TIP_TALL
+                  ? "translate-y-0"
+                  : "-translate-y-full"
+              } ${PANEL}`}
               style={{
                 left: Math.min(
                   Math.max(
                     fit.ox + (tip.frame.x + tip.frame.w / 2) * fit.s,
-                    88,
+                    TIP_HALF,
                   ),
-                  fit.w - 88,
+                  fit.w - TIP_HALF,
                 ),
-                top: fit.oy + tip.frame.y * fit.s - 10,
+                top:
+                  fit.oy + tip.frame.y * fit.s < TIP_TALL
+                    ? fit.oy + (tip.frame.y + tip.frame.h) * fit.s + 10
+                    : fit.oy + tip.frame.y * fit.s - 10,
               }}
             >
               <span className="text-lg text-stone-50">{shown.name}</span>
               <span className="text-2xl text-tar-red">{spec.big(shown)}</span>
               <span className="text-base text-stone-400">{spec.say}</span>
+              <Breakdown name={shown.name} />
             </div>
           )}
         </div>
