@@ -42,6 +42,10 @@ export function PacmanGame() {
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
 
+    // Canvas never triggers a font fetch on its own, so ask for the pixel face
+    // up front rather than drawing the opening frames in the fallback.
+    void document.fonts?.load('16px "PP NeueBit"');
+
     const game = gameRef.current;
     let raf = 0;
     let last = performance.now();
@@ -101,16 +105,23 @@ export function PacmanGame() {
         height={CANVAS_H}
         className="block"
       />
-      {ended && result && (
-        <Link
-          to="/map"
-          state={{ pacmanResult: result }}
-          className="absolute -translate-x-1/2 border-2 border-[#ffff00] bg-black px-4 py-1.5 font-mono text-sm font-bold tracking-widest text-[#ffff00] uppercase hover:bg-[#ffff00] hover:text-black"
-          style={{ top: END_SCREEN_BUTTON_TOP, left: END_SCREEN_CENTER_X }}
-        >
-          View Details
-        </Link>
-      )}
+      {ended &&
+        result && (
+          // The wrapper owns the centring so the link is free to use the press
+          // animation every other button here has.
+          <div
+            className="absolute -translate-x-1/2"
+            style={{ top: END_SCREEN_BUTTON_TOP, left: END_SCREEN_CENTER_X }}
+          >
+            <Link
+              to="/map"
+              state={{ pacmanResult: result }}
+              className="inline-block rounded-none bg-tar-red px-4 py-2 text-xl text-white shadow-[6px_6px_0_#000] transition-all duration-100 ease-[steps(2,jump-end)] hover:translate-x-1 hover:translate-y-1 hover:bg-tar-red-dark hover:shadow-[3px_3px_0_#000] active:translate-x-1.5 active:translate-y-1.5 active:shadow-none"
+            >
+              see your map
+            </Link>
+          </div>
+        )}
     </div>
   );
 }

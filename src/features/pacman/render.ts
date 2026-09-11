@@ -3,25 +3,34 @@ import { MAX_HEALTH, ROUND_SECONDS, type GameState, type Pac } from "./game";
 import type { Ghost } from "./ghosts";
 import { MAZE, MAZE_COLS, MAZE_ROWS, pelletKey, TILE } from "./maze";
 
-/** Placeholder palette — will be replaced later. */
+/**
+ * The map's palette, so the two pages read as one product: near-black ground,
+ * one red, and stone greys for everything that is not the subject. The red is
+ * `--color-tar-red` / `--color-tar-red-dark` from `globals.css`; the greys are
+ * Tailwind's stone ramp. Kept as literals because canvas cannot read CSS custom
+ * properties.
+ */
 const COLORS = {
-  background: "#000000",
-  wall: "#2121de",
-  door: "#ffb8ff",
-  pellet: "#ffb897",
-  power: "#ffb897",
-  powerGlow: "#ffd166",
-  pacman: "#ffff00",
-  text: "#ffffff",
-  hint: "#8b8bff",
-  danger: "#ff5151",
-  frightened: "#2121ff",
-  frightenedFlash: "#f0f0f0",
-  eyeWhite: "#ffffff",
-  pupil: "#0d1b8f",
-  gaugeBg: "#333333",
-  gaugeBorder: "#ffffff",
+  background: "#0c0a09", // stone-950, matching the page behind the canvas
+  wall: "#960000", // tar-red-dark — the shade the map gives an unhovered state
+  door: "#5e0000", // the map's keyline red
+  pellet: "#a8a29e", // stone-400
+  power: "#e7e5e4", // stone-200
+  powerGlow: "#c80000", // tar-red
+  pacman: "#c80000", // tar-red — the accent on scores and gauges
+  text: "#fafaf9", // stone-50
+  hint: "#78716c", // stone-500
+  danger: "#c80000", // tar-red, against white text the rest of the time
+  frightened: "#44403c", // stone-700 — ghosts drain of colour when edible
+  frightenedFlash: "#fafaf9",
+  eyeWhite: "#fafaf9",
+  pupil: "#0c0a09",
+  gaugeBg: "#292524", // stone-800
+  gaugeBorder: "#000000", // every keyline on these pages is black
 };
+
+/** The page's pixel face. Canvas draws with it as soon as it has loaded. */
+const FONT = '"PP NeueBit", ui-monospace, monospace';
 
 /** Height of the score strip above the maze, in pixels. */
 const HEADER = TILE * 2;
@@ -76,17 +85,55 @@ function imageReady(img: HTMLImageElement | null): img is HTMLImageElement {
 export const POWER_ITEM_TYPES = ["A", "B", "C", "D"];
 
 /**
- * Per-type glow; index = type (`power-pellet-<index+1>.png`). `blur` widens the
- * halo (too wide = faint); `passes` stacks shadow copies to make it more
- * intense. Pellets 1 and 2 glow hard, pellet 3 barely.
+ * Per-type glow; index = type (`power-pellet-<index+1>.png`). `rings` is how
+ * many blocks thick the halo is, `alpha` how solid its innermost ring is.
+ * Pellets 1 and 2 glow hard, pellets 3 and 4 barely.
  */
-const POWER_GLOW: { blur: number; passes: number }[] = [
-  { blur: 1.3, passes: 6 },
-  { blur: 1.3, passes: 6 },
-  { blur: 0.6, passes: 1 },
-  { blur: 0.6, passes: 1 },
+const POWER_GLOW: { rings: number; alpha: number }[] = [
+  { rings: 3, alpha: 0.6 },
+  { rings: 3, alpha: 0.6 },
+  { rings: 1, alpha: 0.45 },
+  { rings: 1, alpha: 0.45 },
 ];
-const POWER_GLOW_DEFAULT = { blur: 1, passes: 2 };
+const POWER_GLOW_DEFAULT = { rings: 2, alpha: 0.5 };
+/** The eight directions a ring is stamped in to dilate the silhouette. */
+const RING_STEPS = [
+  [-1, -1],
+  [0, -1],
+  [1, -1],
+  [-1, 0],
+  [1, 0],
+  [-1, 1],
+  [0, 1],
+  [1, 1],
+] as const;
+
+/**
+ * A halo built the way the rest of this screen is: whole blocks, no blur. The
+ * silhouette is stamped once per direction per ring, each ring a block further
+ * out and a step fainter, which gives hard-edged bands instead of a gradient.
+ */
+function drawBlockGlow(
+  ctx: CanvasRenderingContext2D,
+  sil: CanvasImageSource,
+  dx: number,
+  dy: number,
+  w: number,
+  h: number,
+  rings: number,
+  alpha: number,
+) {
+  // One block is one step. Rounded so every ring lands on whole pixels.
+  const step = Math.max(2, Math.round(TILE * 0.13));
+  ctx.save();
+  for (let r = rings; r >= 1; r--) {
+    ctx.globalAlpha = Math.max(0.08, alpha * (1 - (r - 1) / (rings + 0.5)));
+    for (const [ox, oy] of RING_STEPS) {
+      ctx.drawImage(sil, dx + ox * r * step, dy + oy * r * step, w, h);
+    }
+  }
+  ctx.restore();
+}
 
 function drawPowerPellet(
   ctx: CanvasRenderingContext2D,
@@ -96,10 +143,11 @@ function drawPowerPellet(
 ) {
   const src = `/img/pacman/power-pellet-${type + 1}.png`;
   const img = loadImage(src);
-  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 350);
+  // Two frames, not a sine: the halo steps between two sizes the way a sprite
+  // animation would.
+  const pulse = Math.floor(performance.now() / 380) % 2;
   const glow = POWER_GLOW[type] ?? POWER_GLOW_DEFAULT;
-  const blur = TILE * (0.4 + pulse * 0.7) * glow.blur;
-  const passes = glow.passes;
+  const rings = glow.rings + pulse;
 
   if (imageReady(img)) {
     // Width matches a maze tile so tall/narrow art doesn't spill into walls.
@@ -112,27 +160,33 @@ function drawPowerPellet(
     // (uniformly opaque for every item) rather than the art itself, so the
     // halo follows the shape; per-type strength comes only from POWER_GLOW.
     const sil = getSilhouette(src, img, COLORS.powerGlow);
-    if (sil) {
-      ctx.save();
-      ctx.shadowColor = COLORS.powerGlow;
-      ctx.shadowBlur = blur;
-      for (let i = 0; i < passes; i++) ctx.drawImage(sil, dx, dy, w, h);
-      ctx.restore();
-    }
+    if (sil) drawBlockGlow(ctx, sil, dx, dy, w, h, rings, glow.alpha);
 
     ctx.drawImage(img, dx, dy, w, h);
     return;
   }
 
+  // No art yet: a square block and a square halo, same idea.
+  const size = TILE * 0.6;
+  const step = Math.max(2, Math.round(TILE * 0.13));
   ctx.save();
-  ctx.shadowColor = COLORS.powerGlow;
-  ctx.shadowBlur = blur;
-  ctx.fillStyle = COLORS.power;
-  ctx.beginPath();
-  ctx.arc(cx, cy, TILE * 0.3, 0, Math.PI * 2);
-  ctx.fill();
-  for (let i = 1; i < passes; i++) ctx.fill();
+  ctx.fillStyle = COLORS.powerGlow;
+  for (let r = rings; r >= 1; r--) {
+    ctx.globalAlpha = Math.max(
+      0.08,
+      glow.alpha * (1 - (r - 1) / (rings + 0.5)),
+    );
+    const grow = r * step;
+    ctx.fillRect(
+      cx - size / 2 - grow,
+      cy - size / 2 - grow,
+      size + grow * 2,
+      size + grow * 2,
+    );
+  }
   ctx.restore();
+  ctx.fillStyle = COLORS.power;
+  ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
 }
 
 /**
@@ -141,10 +195,11 @@ function drawPowerPellet(
  */
 const GHOST_SPRITE_SRC = "/img/pacman/doctor.png";
 /**
- * On-screen height of a ghost sprite, in tiles; kept near 1 tile so it fits
- * inside single-tile-wide corridors without spilling into the walls.
+ * On-screen height of a ghost sprite, in tiles. At TILE = 28 this is ~39px —
+ * deliberately wider than a corridor, so a doctor reads as a threat rather
+ * than as another pellet. The overspill onto the walls is the point.
  */
-const GHOST_SPRITE_TILES = 1.1;
+const GHOST_SPRITE_TILES = 1.4;
 
 function drawGhostSprite(ctx: CanvasRenderingContext2D, g: Ghost): boolean {
   const img = loadImage(GHOST_SPRITE_SRC);
@@ -244,7 +299,7 @@ function drawPacmanSprite(
 
   const cx = pac.x * TILE + TILE / 2;
   const cy = pac.y * TILE + TILE / 2;
-  const w = TILE * 1.1;
+  const w = TILE * 1.3;
   const h = w * (img.naturalHeight / img.naturalWidth);
   const dx = -w / 2;
   const dy = -h / 2;
@@ -438,7 +493,7 @@ function drawTimer(
 ) {
   const remaining = ROUND_SECONDS - elapsed;
   ctx.fillStyle = remaining <= 10 ? COLORS.danger : COLORS.text;
-  ctx.font = `${TILE}px monospace`;
+  ctx.font = `${TILE * 1.7}px ${FONT}`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "center";
   ctx.fillText(formatTime(remaining), CANVAS_W / 2, midY);
@@ -477,7 +532,7 @@ function drawSidebar(ctx: CanvasRenderingContext2D, collectedCounts: number[]) {
   const x = TILE * 0.4;
   let y = HEADER + TILE * 0.6;
 
-  ctx.font = `${TILE * 0.5}px monospace`;
+  ctx.font = `${TILE * 0.5}px ${FONT}`;
 
   for (const [type, letter] of POWER_ITEM_TYPES.entries()) {
     const count = collectedCounts[type];
@@ -532,7 +587,7 @@ function drawCenteredLines(
   ctx.textBaseline = "top";
   for (const line of lines) {
     ctx.fillStyle = line.color;
-    ctx.font = `${line.size}px monospace`;
+    ctx.font = `${line.size}px ${FONT}`;
     ctx.fillText(line.text, cx, y);
     y += line.size + (line.gap ?? line.size * 0.6);
   }
@@ -554,12 +609,6 @@ function drawOverlay(ctx: CanvasRenderingContext2D, game: GameState) {
 
   if (game.status === "ready") {
     drawCenteredLines(ctx, [
-      {
-        text: "Tar・Nation",
-        size: TILE * 2.2,
-        color: COLORS.pacman,
-        gap: TILE,
-      },
       { text: "PRESS AN ARROW KEY", size: TILE * 0.85, color: COLORS.text },
       { text: "ARROWS / WASD TO MOVE", size: TILE * 0.7, color: COLORS.hint },
     ]);
@@ -577,13 +626,13 @@ function drawOverlay(ctx: CanvasRenderingContext2D, game: GameState) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = headline.color;
-  ctx.font = `${TILE * 1.7}px monospace`;
+  ctx.font = `${TILE * 1.7}px ${FONT}`;
   ctx.fillText(headline.text, cx, cy - TILE * 3.4);
 
   drawItemBreakdown(ctx, game.collectedCounts, cx, cy - TILE * 0.7);
 
   ctx.fillStyle = COLORS.hint;
-  ctx.font = `${TILE * 0.8}px monospace`;
+  ctx.font = `${TILE * 0.8}px ${FONT}`;
   ctx.fillText("PRESS R TO RESTART", cx, cy + TILE * 2.3);
 }
 
@@ -600,7 +649,7 @@ function drawItemBreakdown(
   const totalW = count * iconSize + (count - 1) * gap;
   let x = cx - totalW / 2;
 
-  ctx.font = `${TILE * 0.55}px monospace`;
+  ctx.font = `${TILE * 0.55}px ${FONT}`;
 
   for (const [type, letter] of POWER_ITEM_TYPES.entries()) {
     drawItemIcon(ctx, type, letter, x, cy, iconSize, false);
@@ -619,9 +668,31 @@ function drawItemBreakdown(
 }
 
 /** Clear the canvas and draw the current game state. */
+/** Seconds left when the screen starts flashing. */
+const PANIC_SECONDS = 10;
+/** How far the frame lurches, in pixels. Whole numbers — nothing here is smooth. */
+const PANIC_SHAKE = 3;
+/** Full on/off cycles per second of the red flash. */
+const PANIC_BLINK_HZ = 3;
+
 export function drawFrame(ctx: CanvasRenderingContext2D, game: GameState) {
+  const remaining = ROUND_SECONDS - game.elapsed;
+  // Only while the round is actually running — a paused end screen should not
+  // strobe behind the result.
+  const panic =
+    remaining <= PANIC_SECONDS && remaining > 0 && game.status === "playing";
+  const now = performance.now();
+  // Steps between whole-pixel offsets rather than easing between them, so the
+  // shake reads as a sprite jitter and never blurs the maze.
+  const tick = Math.floor(now / 60);
+  const shakeX = panic ? ((tick % 3) - 1) * PANIC_SHAKE : 0;
+  const shakeY = panic ? (((tick >> 1) % 3) - 1) * PANIC_SHAKE : 0;
+
   ctx.fillStyle = COLORS.background;
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
 
   drawHeader(ctx, game);
   drawSidebar(ctx, game.collectedCounts);
@@ -634,6 +705,19 @@ export function drawFrame(ctx: CanvasRenderingContext2D, game: GameState) {
     drawGhost(ctx, ghost);
   }
   ctx.restore();
+
+  ctx.restore();
+
+  // On/off, not a fade: the whole screen washes red every other beat, and the
+  // wash gets stronger as the clock runs out.
+  if (panic && Math.floor((now / 1000) * PANIC_BLINK_HZ) % 2 === 0) {
+    const urgency = 1 - remaining / PANIC_SECONDS;
+    ctx.save();
+    ctx.globalAlpha = 0.12 + urgency * 0.22;
+    ctx.fillStyle = COLORS.danger;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.restore();
+  }
 
   drawOverlay(ctx, game);
 }
